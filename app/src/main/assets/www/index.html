@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>N-assistant</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=Noto+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+</style>
+<style>
+/* Layout: bedside-clock header on top, one tabbed column (เช้า / เย็น / ประวัติ / ตั้งค่า), max 640px, stacks naturally on phones */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#1b2430; --muted:#5d6878; --line:#d6dce4;
+  --accent:#d9731f; --accent-ink:#ffffff; --accent-soft:#fbe9d9;
+  --dusk:#3b4f8c; --dusk-soft:#e3e8f6; --ok:#2f7d4f; --warn:#b4541b;
+  --f-display:"Bai Jamjuree","Noto Sans Thai",system-ui,sans-serif;
+  --f-body:"Noto Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --surface:#1b212b; --ink:#e7ebf1; --muted:#9aa5b5; --line:#2c3542;
+  --accent:#f0913f; --accent-ink:#1a1008; --accent-soft:#3a2716;
+  --dusk:#9fb2ec; --dusk-soft:#232c45; --ok:#6cc792; --warn:#f0a06a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --surface:#1b212b; --ink:#e7ebf1; --muted:#9aa5b5; --line:#2c3542;
+  --accent:#f0913f; --accent-ink:#1a1008; --accent-soft:#3a2716;
+  --dusk:#9fb2ec; --dusk-soft:#232c45; --ok:#6cc792; --warn:#f0a06a; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+.wrap{max-width:640px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.25}
+h2{font-size:1.3rem} h3{font-size:1.02rem}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:.86rem}
+.label{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* clock header */
+.clock{display:grid;grid-template-columns:1fr auto;gap:6px 16px;align-items:end}
+.clock .time{font-family:var(--f-mono);font-size:clamp(2.6rem,12vw,3.6rem);font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
+.clock .date{font-family:var(--f-display);font-size:1.05rem}
+.alarms{display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-family:var(--f-mono);font-size:.9rem;font-variant-numeric:tabular-nums}
+.alarms span{display:flex;gap:6px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.armed .dot{background:var(--accent)}
+.armbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--line);border-radius:var(--r)}
+.armbar p{flex:1 1 220px;min-width:0}
+
+/* tabs */
+nav{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+nav button{border:0;background:transparent;color:var(--muted);font:600 .95rem var(--f-display);padding:8px 4px;border-radius:999px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+
+.panel{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.brief{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.card.eve{border-color:var(--dusk);box-shadow:0 0 0 3px var(--dusk-soft)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:.95rem}
+.field .hint{font-size:.82rem;color:var(--muted)}
+textarea,input[type=text],input[type=time]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{min-height:84px;resize:vertical}
+input[type=time]{font-family:var(--f-mono);max-width:160px}
+textarea:focus,input:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.scale{display:flex;gap:6px;flex-wrap:wrap}
+.scale button{width:44px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:600 1rem var(--f-mono);cursor:pointer}
+.scale button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 .95rem var(--f-display);padding:10px 16px;border-radius:10px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.dusk{background:var(--dusk);border-color:var(--dusk);color:var(--bg)}
+.btn:disabled{opacity:.55;cursor:wait}
+.status{font-size:.85rem;color:var(--muted);min-height:1.2em}
+
+.brief .focus{font-family:var(--f-display);font-size:1.2rem;font-weight:600}
+.brief ul,.brief ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px}
+.sec{display:flex;flex-direction:column;gap:6px}
+.sec.caution li::marker{color:var(--warn)}
+.plan{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0}
+.plan dt{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--accent);font-weight:600}
+.plan dd{margin:0;min-width:0}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;letter-spacing:.05em;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.checks{display:flex;flex-direction:column;gap:8px}
+.checks label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.checks input{width:20px;height:20px;margin-top:3px;accent-color:var(--ok)}
+
+.hist{display:flex;flex-direction:column;gap:10px}
+.day{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.day .d{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600}
+.day .s{min-width:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;grid-column:2}
+.chip{font-size:.75rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.chip.ok{color:var(--ok);border-color:var(--ok)}
+pre.export{white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font:500 .8rem var(--f-mono);margin:0}
+
+/* ringing overlay */
+.ring{position:fixed;inset:0;z-index:50;background:var(--accent);color:var(--accent-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:max(24px,env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(24px,env(safe-area-inset-left,0px));text-align:center}
+.ring.evening{background:var(--dusk);color:var(--bg)}
+.ring .big{font-family:var(--f-mono);font-size:clamp(3rem,18vw,5rem);font-weight:600;line-height:1}
+.ring .btn{background:var(--bg);color:var(--ink);border-color:transparent;font-size:1.1rem;padding:14px 28px}
+@media (prefers-reduced-motion: no-preference){.ring .big{animation:pulse 1s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.06)}}}
+</style>
+<style>
+.banner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:var(--r);background:var(--dusk-soft);border:1px solid var(--dusk)}
+.banner p{flex:1 1 200px;min-width:0}
+.warn-box{padding:10px 12px;border-radius:10px;border:1px solid var(--warn);color:var(--warn);font-size:.88rem}
+select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-width:100%}
+.toggle{display:flex;gap:10px;align-items:center;cursor:pointer;font-weight:600}
+.toggle input{width:22px;height:22px;accent-color:var(--accent)}
+.alarm-row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
+input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="clock">
+    <div>
+      <div class="time" id="now">--:--</div>
+      <div class="date" id="today">—</div>
+    </div>
+    <div class="alarms" id="alarms">
+      <span id="amMorning"><i class="dot"></i>เช้า <b id="tMorning">--:--</b></span>
+      <span id="amEvening"><i class="dot"></i>เย็น <b id="tEvening">--:--</b></span>
+    </div>
+  </header>
+
+  <div class="banner" id="updBanner" hidden>
+    <p class="small"><b>มีเวอร์ชันใหม่ <span id="updVer"></span></b><br><span class="muted" id="updNotes"></span></p>
+    <button class="btn dusk" id="updNow" type="button">อัปเดตเลย</button>
+  </div>
+  <div class="warn-box" id="permWarn" hidden></div>
+
+  <nav role="tablist" aria-label="ส่วนของแอป">
+    <button role="tab" id="tab-morning" aria-selected="true" data-tab="morning">เช้า</button>
+    <button role="tab" id="tab-evening" aria-selected="false" data-tab="evening">เย็น</button>
+    <button role="tab" id="tab-history" aria-selected="false" data-tab="history">ประวัติ</button>
+    <button role="tab" id="tab-settings" aria-selected="false" data-tab="settings">ตั้งค่า</button>
+  </nav>
+
+  <!-- MORNING -->
+  <section class="panel" id="p-morning" role="tabpanel">
+    <div class="card">
+      <h2>Morning Beep</h2>
+      <p class="muted small">เล่าสั้น ๆ ว่าวันนี้มีอะไร แล้วให้ Claude ช่วยจัดลำดับงาน บอกสิ่งที่ควรระวัง และวางแผนวันให้</p>
+      <div class="field">
+        <label for="mTasks">วันนี้มีงาน นัด หรือเรื่องอะไรบ้าง</label>
+        <textarea id="mTasks" placeholder="เช่น ประชุมทีม 10:00, ส่งใบเสนอราคาให้ลูกค้า, ไปรับลูก 16:30"></textarea>
+      </div>
+      <div class="field">
+        <label for="mWorry">มีเรื่องไหนกังวลหรือต้องระวังเป็นพิเศษ</label>
+        <textarea id="mWorry" placeholder="เช่น ใบเสนอราคายังไม่ได้เช็กตัวเลข, นอนน้อย"></textarea>
+      </div>
+      <div class="field">
+        <span class="label" id="mEnergyL">พลังงานเช้านี้ (1 = หมดแรง, 5 = เต็มที่)</span>
+        <div class="scale" id="mEnergy" role="group" aria-labelledby="mEnergyL"></div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="briefBtn" type="button">ขอแผนวันนี้</button>
+        <button class="btn" id="mSaveBtn" type="button">บันทึกอย่างเดียว</button>
+      </div>
+      <p class="status" id="mStatus"></p>
+    </div>
+    <div class="card brief" id="briefCard"></div>
+  </section>
+
+  <!-- EVENING -->
+  <section class="panel" id="p-evening" role="tabpanel" hidden>
+    <div class="card eve">
+      <h2>วันนี้เป็นยังไงบ้าง</h2>
+      <p class="muted small">ติ๊กงานที่ทำเสร็จ แล้วเล่าว่าเกิดอะไรขึ้น ข้อมูลนี้จะถูกใช้ตอนวางแผนพรุ่งนี้เช้า</p>
+      <div class="field">
+        <span class="label">งานสำคัญจากแผนเช้านี้</span>
+        <div class="checks" id="eChecks"></div>
+      </div>
+      <div class="field">
+        <label for="eNotes">อัปเดตวันนี้</label>
+        <textarea id="eNotes" placeholder="เช่น ประชุมเสร็จเร็ว แต่ใบเสนอราคาต้องแก้ตัวเลขอีกรอบ"></textarea>
+      </div>
+      <div class="field">
+        <label for="eWins">เรื่องดี ๆ หรือสิ่งที่ภูมิใจ</label>
+        <textarea id="eWins"></textarea>
+      </div>
+      <div class="field">
+        <label for="eTomorrow">ยกไปพรุ่งนี้</label>
+        <textarea id="eTomorrow" placeholder="งานที่ยังค้าง หรือเรื่องที่อยากให้เตือนตอนเช้า"></textarea>
+      </div>
+      <div class="field">
+        <span class="label" id="eMoodL">อารมณ์ตอนนี้ (1 = แย่, 5 = ดีมาก)</span>
+        <div class="scale" id="eMood" role="group" aria-labelledby="eMoodL"></div>
+      </div>
+      <div class="row">
+        <button class="btn dusk" id="eSaveBtn" type="button">บันทึกวันนี้</button>
+        <button class="btn" id="reflectBtn" type="button">ขอสรุปจาก Claude</button>
+      </div>
+      <p class="status" id="eStatus"></p>
+      <div id="reflection" class="sec" hidden></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="panel" id="p-history" role="tabpanel" hidden>
+    <div class="card">
+      <h2>ส่งออกข้อมูล</h2>
+      <p class="muted small">บันทึกทั้งหมดเป็นไฟล์ลงในเครื่อง (เลือกโฟลเดอร์ได้ เช่น Downloads หรือ Google Drive) เพื่อเอาไปใช้ต่อใน Excel, Google Sheets, Notion หรือโปรแกรมอื่น</p>
+      <div class="row">
+        <button class="btn" type="button" data-export="csv">CSV (Excel/Sheets)</button>
+        <button class="btn" type="button" data-export="md">Markdown (บันทึก)</button>
+        <button class="btn" type="button" data-export="json">JSON (สำรองข้อมูล)</button>
+      </div>
+      <div class="row">
+        <button class="btn" type="button" id="shareMd">แชร์บันทึกเป็นข้อความ</button>
+        <label class="btn" for="importFile">นำเข้าไฟล์ JSON</label>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <p class="status" id="xStatus"></p>
+    </div>
+    <div class="hist" id="histList"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="p-settings" role="tabpanel" hidden>
+    <div class="card">
+      <h2>นาฬิกาปลุก</h2>
+      <div class="alarm-row">
+        <div class="field"><label for="sWake">ปลุกตอนเช้า</label><input type="time" id="sWake" value="06:30"></div>
+        <label class="toggle"><input type="checkbox" id="sWakeOn" checked> เปิด</label>
+      </div>
+      <div class="alarm-row">
+        <div class="field"><label for="sEve">ถามอัปเดตตอนเย็น</label><input type="time" id="sEve" value="19:30"></div>
+        <label class="toggle"><input type="checkbox" id="sEveOn" checked> เปิด</label>
+      </div>
+      <p class="small muted">ปลุกด้วยระบบ Android แม้ปิดแอปหรือล็อกจออยู่ เสียงจะดังซ้ำจนกว่าจะกดหยุด (นานสุด 3 นาที)</p>
+      <div class="row">
+        <button class="btn" id="testBeep" type="button">ทดสอบเสียงปลุก</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>ข้อมูลส่วนตัว</h2>
+      <div class="field">
+        <label for="sName">ชื่อเล่น</label>
+        <input type="text" id="sName" placeholder="ให้ Claude เรียกคุณว่าอะไร">
+      </div>
+      <div class="field">
+        <label for="sGoals">เป้าหมายระยะยาว หรือเรื่องที่อยากให้ช่วยดูแล</label>
+        <textarea id="sGoals" placeholder="เช่น ออกกำลังกาย 3 วัน/สัปดาห์, เลิกเลื่อนงานเอกสาร, นอนก่อนเที่ยงคืน"></textarea>
+        <span class="hint">Claude จะใช้ข้อมูลนี้ทุกครั้งที่วางแผนให้</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>เชื่อมต่อ Claude</h2>
+      <div class="field">
+        <label for="sKey">Claude API key</label>
+        <input type="password" id="sKey" placeholder="sk-ant-..." autocomplete="off">
+        <span class="hint">สร้างได้ที่ console.anthropic.com เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกรวมในไฟล์ส่งออก ค่าใช้จ่ายคิดตามการใช้งานจริงในบัญชี API ของคุณ</span>
+      </div>
+      <div class="field">
+        <label for="sModel">โมเดล</label>
+        <select id="sModel">
+          <option value="claude-opus-5-5">Claude Opus 5.5 (ฉลาดที่สุด)</option>
+          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (เร็ว ราคากลาง)</option>
+          <option value="claude-haiku-5-5">Claude Haiku 5.5 (ถูกที่สุด)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row"><button class="btn primary" id="sSaveBtn" type="button">บันทึกการตั้งค่า</button></div>
+    <p class="status" id="sStatus"></p>
+    <div class="card">
+      <h3>เวอร์ชันแอป</h3>
+      <p class="small">เวอร์ชัน <b id="appVer">-</b> <span class="muted" id="updState"></span></p>
+      <div class="row"><button class="btn" id="checkUpd" type="button">ตรวจหาอัปเดต</button></div>
+      <p class="small muted">แอปตรวจหาเวอร์ชันใหม่จาก GitHub ให้อัตโนมัติวันละครั้ง ข้อมูลที่บันทึกไว้จะยังอยู่หลังอัปเดต</p>
+    </div>
+  </section>
+</div>
+
+<div class="ring" id="ring" hidden role="alertdialog" aria-labelledby="ringTitle">
+  <div class="big" id="ringTime">06:30</div>
+  <h2 id="ringTitle">อรุณสวัสดิ์</h2>
+  <p id="ringMsg">ได้เวลาวางแผนวันนี้แล้ว</p>
+  <button class="btn" id="ringStop" type="button">หยุดเสียงและเริ่มเลย</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
