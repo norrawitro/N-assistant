@@ -266,6 +266,56 @@ public class MainActivity extends Activity {
             });
         }
 
+        /**
+         * HTTP request to an AI server on this phone (Ollama in Termux). Only localhost is allowed.
+         * Answers through window.__native("local", {id, ok, status, body}).
+         */
+        @JavascriptInterface
+        public void localRequest(String id, String method, String url, String body) {
+            io.execute(() -> {
+                JSONObject out = new JSONObject();
+                try {
+                    out.put("id", id);
+                    Uri u = Uri.parse(url);
+                    String host = u.getHost();
+                    if (!"http".equals(u.getScheme()) || !("127.0.0.1".equals(host) || "localhost".equals(host))) {
+                        throw new Exception("ใช้ได้เฉพาะเซิร์ฟเวอร์ในเครื่อง (http://127.0.0.1)");
+                    }
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(5000);
+                    c.setReadTimeout(10 * 60 * 1000); // small phones can take minutes to answer
+                    c.setRequestMethod(method);
+                    if (body != null && !body.isEmpty()) {
+                        c.setDoOutput(true);
+                        c.setRequestProperty("Content-Type", "application/json");
+                        try (OutputStream os = c.getOutputStream()) {
+                            os.write(body.getBytes(StandardCharsets.UTF_8));
+                        }
+                    }
+                    int status = c.getResponseCode();
+                    java.io.InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
+                    String text = "";
+                    if (in != null) {
+                        try (java.io.InputStream s = in) {
+                            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = s.read(buf)) > 0) bo.write(buf, 0, n);
+                            text = bo.toString(StandardCharsets.UTF_8.name());
+                        }
+                    }
+                    out.put("ok", status < 400);
+                    out.put("status", status);
+                    out.put("body", text);
+                } catch (java.net.ConnectException e) {
+                    try { out.put("ok", false); out.put("status", 0); out.put("error", "offline"); } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    try { out.put("ok", false); out.put("status", 0); out.put("error", String.valueOf(e.getMessage())); } catch (Exception ignored) {}
+                }
+                emit("local", out.toString());
+            });
+        }
+
         @JavascriptInterface
         public void openUrl(String url) {
             main.post(() -> {

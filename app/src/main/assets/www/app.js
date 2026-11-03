@@ -16,7 +16,7 @@
   let docs = lsGet(LS_DOCS) || {}; // "settings", "day-YYYY-MM-DD"
   function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); }
 
-  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, name: "", goals: "", model: "claude-opus-5-5" };
+  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5" };
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(docs.settings || {}) });
   const todayKey = () => "day-" + keyOf(new Date());
   const today = () => docs[todayKey()] || { date: keyOf(new Date()), morning: {}, evening: {} };
@@ -63,7 +63,7 @@
       plan: { type: "array", items: { type: "object", additionalProperties: false, required: ["time", "item"], properties: { time: { type: "string" }, item: { type: "string" } } } }
     }
   };
-  async function askClaude(prompt, { schema = null, effort = "medium" } = {}) {
+  async function callClaude(prompt, { schema = null, effort = "medium" } = {}) {
     let key = ""; try { key = localStorage.getItem(LS_KEY) || ""; } catch {}
     if (!key) throw new Error("ยังไม่ได้ใส่ Claude API key ไปที่แท็บ \"ตั้งค่า\" ก่อน");
     const model = settings().model;
@@ -96,6 +96,51 @@
     if (!text) throw new Error("Claude ไม่ได้ส่งคำตอบกลับมา ลองใหม่อีกครั้ง");
     return schema ? JSON.parse(text) : text;
   }
+
+  // ---------- Local AI: Ollama running in Termux on this phone ----------
+  let reqSeq = 0;
+  const pendingLocal = {};
+  handlers.local = r => { const p = r && pendingLocal[r.id]; if (p) { delete pendingLocal[r.id]; p(r); } };
+  function localRequest(method, path, body) {
+    const base = (settings().localUrl || DEFAULT_SETTINGS.localUrl).replace(/\/+$/, "");
+    if (!A) return Promise.reject(new Error("AI ในเครื่องใช้ได้เฉพาะในแอปบนมือถือ"));
+    return new Promise(resolve => {
+      const id = "r" + (++reqSeq);
+      pendingLocal[id] = resolve;
+      A.localRequest(id, method, base + path, body ? JSON.stringify(body) : "");
+    }).then(r => {
+      if (r.error === "offline") throw new Error("ติดต่อ Ollama ไม่ได้ เปิด Termux แล้วรัน: termux-wake-lock; ollama serve");
+      if (r.error) throw new Error("ติดต่อ AI ในเครื่องไม่สำเร็จ: " + r.error);
+      let data = {}; try { data = JSON.parse(r.body || "{}"); } catch {}
+      if (!r.ok) { const e = new Error(data.error || ("Ollama ตอบกลับรหัส " + r.status)); e.status = r.status; throw e; }
+      return data;
+    });
+  }
+  function parseJsonLoose(text) {
+    const t = String(text || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    try { return JSON.parse(t); } catch {}
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (fence) { try { return JSON.parse(fence[1]); } catch {} }
+    const a = t.indexOf("{"), b = t.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch {} }
+    throw new Error("AI ในเครื่องตอบกลับมาในรูปแบบที่อ่านไม่ได้ ลองกดอีกครั้ง");
+  }
+  async function callLocal(prompt, { schema = null } = {}) {
+    const s = settings();
+    const body = { model: s.localModel || DEFAULT_SETTINGS.localModel, messages: [{ role: "user", content: prompt }], stream: false, think: false, options: { temperature: 0.4 } };
+    if (schema) body.format = schema;
+    let data;
+    try { data = await localRequest("POST", "/api/chat", body); }
+    catch (e) {
+      // Models without a thinking switch reject `think`; ask again without it.
+      if (e.status === 400 && /think/i.test(e.message)) { delete body.think; data = await localRequest("POST", "/api/chat", body); }
+      else if (e.status === 404) throw new Error("ไม่พบโมเดล " + body.model + " ใน Ollama เลือกโมเดลใหม่ในแท็บ \"ตั้งค่า\"");
+      else throw e;
+    }
+    const text = data?.message?.content || "";
+    if (!text.trim()) throw new Error("AI ในเครื่องไม่ได้ส่งคำตอบกลับมา ลองใหม่อีกครั้ง");
+    return schema ? parseJsonLoose(text) : text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  }
+  const askAI = (prompt, opts) => settings().provider === "claude" ? callClaude(prompt, opts) : callLocal(prompt, opts);
 
   function contextText() {
     const s = settings();
@@ -139,7 +184,7 @@
   $("briefBtn").addEventListener("click", async () => {
     const m = morningInput();
     saveToday({ morning: m });
-    const btn = $("briefBtn"); btn.disabled = true; $("mStatus").textContent = "Claude กำลังคิดแผนให้… (อาจใช้เวลาครึ่งนาที)";
+    const btn = $("briefBtn"); btn.disabled = true; $("mStatus").textContent = (settings().provider === "claude" ? "Claude กำลังคิดแผนให้…" : "AI ในเครื่องกำลังคิดแผนให้… อาจใช้เวลา 1-3 นาที อย่าเพิ่งปิดแอป");
     const now = new Date();
     const prompt = `คุณเป็นผู้ช่วยวางแผนตอนเช้าที่พูดจาเป็นกันเอง กระชับ และใช้งานได้จริง ตอบเป็นภาษาไทยทั้งหมด
 วันนี้: ${thDate(now)} เวลาตอนนี้ ${hhmm(now)}
@@ -153,7 +198,7 @@ ${contextText()}
 ให้คิดจากข้อมูลจริงข้างบน ถ้ามีงานค้างจากวันก่อนให้หยิบมาพิจารณา ถ้าพลังงานต่ำให้ลดงานและเตือนเรื่องพัก อย่าแต่งนัดหมายที่ผู้ใช้ไม่ได้บอก
 greeting = ทักทายสั้น 1 ประโยค, focus = สิ่งเดียวที่สำคัญที่สุดวันนี้, priorities = งานสำคัญ 3-5 ข้อเรียงตามลำดับ, cautions = สิ่งที่ควรระวัง 2-4 ข้อ, plan = แผนตามเวลา (time เป็น HH:MM), tip = คำแนะนำสั้น 1 ข้อ`;
     try {
-      const r = await askClaude(prompt, { schema: BRIEF_SCHEMA, effort: "medium" });
+      const r = await askAI(prompt, { schema: BRIEF_SCHEMA, effort: "medium" });
       const brief = {
         greeting: String(r.greeting || ""), focus: String(r.focus || ""),
         priorities: (r.priorities || []).map(String).slice(0, 6),
@@ -164,7 +209,7 @@ greeting = ทักทายสั้น 1 ประโยค, focus = สิ�
       saveToday({ morning: { brief } });
       renderBrief();
       $("mStatus").textContent = "บันทึกแผนวันนี้แล้ว";
-    } catch (e) { $("mStatus").textContent = e.message || "ถาม Claude ไม่สำเร็จ ลองใหม่อีกครั้ง"; }
+    } catch (e) { $("mStatus").textContent = e.message || "ถาม AI ไม่สำเร็จ ลองใหม่อีกครั้ง"; }
     finally { btn.disabled = false; }
   });
   $("mSaveBtn").addEventListener("click", () => { saveToday({ morning: morningInput() }); $("mStatus").textContent = "บันทึกแล้ว"; });
@@ -184,7 +229,7 @@ greeting = ทักทายสั้น 1 ประโยค, focus = สิ�
     saveToday({ evening: ev });
     const pr = today().morning.brief?.priorities || [];
     const btn = $("reflectBtn"); btn.disabled = true;
-    const out = $("reflection"); out.hidden = false; out.innerHTML = '<p class="small muted">Claude กำลังอ่านบันทึก…</p>';
+    const out = $("reflection"); out.hidden = false; out.innerHTML = '<p class="small muted">AI กำลังอ่านบันทึก…</p>';
     const prompt = `คุณเป็นโค้ชส่วนตัวที่อบอุ่นและตรงไปตรงมา ตอบเป็นภาษาไทย ไม่เกิน 120 คำ ไม่ใช้ markdown
 ${contextText()}
 วันนี้ (${thDate(new Date())}):
@@ -195,8 +240,8 @@ ${contextText()}
 - อารมณ์: ${ev.mood || "-"}/5
 สรุปวันนี้สั้น ๆ ชมสิ่งที่ทำได้ แล้วแนะนำ 1-2 อย่างสำหรับพรุ่งนี้`;
     try {
-      const text = await askClaude(prompt, { effort: "low" });
-      out.innerHTML = `<h3>สรุปจาก Claude</h3><p>${esc(text)}</p>`;
+      const text = await askAI(prompt, { effort: "low" });
+      out.innerHTML = `<h3>สรุปจาก AI</h3><p>${esc(text)}</p>`;
       saveToday({ evening: { reflection: text } });
     } catch (e) { out.innerHTML = `<p class="small">${esc(e.message)}</p>`; }
     finally { btn.disabled = false; }
@@ -220,7 +265,7 @@ ${contextText()}
     const days = allDays();
     if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), days }, null, 2);
     if (kind === "csv") {
-      const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก Claude"];
+      const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก AI"];
       const rows = days.map(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
         return [d.date, d.morning?.tasks, d.morning?.worry, d.morning?.energy, b.focus, pr.join(" | "), (b.cautions || []).join(" | "), (b.plan || []).map(p => p.time + " " + p.item).join(" | "), dn.map(i => pr[i]).filter(Boolean).join(" | "), pr.length ? `${dn.length}/${pr.length}` : "", d.evening?.notes, d.evening?.wins, d.evening?.tomorrow, d.evening?.mood, d.evening?.reflection].map(csvCell).join(","); });
       return "﻿" + [head.map(csvCell).join(","), ...rows].join("\r\n");
@@ -271,7 +316,8 @@ ${contextText()}
     save("settings", {
       wake: $("sWake").value || "06:30", wakeOn: $("sWakeOn").checked,
       evening: $("sEve").value || "19:30", eveningOn: $("sEveOn").checked,
-      name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value, updatedAt: Date.now()
+      name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value,
+      provider: $("sProvider").value, localUrl: $("sLocalUrl").value.trim() || DEFAULT_SETTINGS.localUrl, localModel: $("sLocalModel").value || DEFAULT_SETTINGS.localModel, updatedAt: Date.now()
     });
     try { const k = $("sKey").value.trim(); if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY); } catch {}
     pushAlarms();
@@ -349,16 +395,43 @@ ${contextText()}
     $("updState").textContent = "กำลังตรวจ…"; A.checkUpdate();
   });
 
+  // ---------- provider settings ----------
+  function showProviderBox() { const c = $("sProvider").value === "claude"; $("claudeBox").hidden = !c; $("localBox").hidden = c; }
+  function ensureModelOption(name) {
+    if (!name) return;
+    const sel = $("sLocalModel");
+    if (![...sel.options].some(o => o.value === name)) sel.append(new Option(name, name));
+  }
+  $("sProvider").addEventListener("change", showProviderBox);
+  $("testLocal").addEventListener("click", async () => {
+    const btn = $("testLocal"); btn.disabled = true; $("localStatus").textContent = "กำลังติดต่อ Ollama…";
+    const keep = $("sLocalModel").value;
+    try {
+      // Use the address typed in the box, even before saving.
+      const typed = $("sLocalUrl").value.trim();
+      if (typed) docs.settings = { ...settings(), localUrl: typed };
+      const data = await localRequest("GET", "/api/tags");
+      const names = (data.models || []).map(m => m.name).filter(Boolean);
+      const sel = $("sLocalModel"); sel.innerHTML = "";
+      names.forEach(ensureModelOption);
+      ensureModelOption(keep);
+      sel.value = names.includes(keep) ? keep : (names[0] || keep);
+      $("localStatus").textContent = names.length ? `เชื่อมต่อได้ พบโมเดล ${names.length} ตัว เลือกแล้วกด "บันทึกการตั้งค่า"` : "เชื่อมต่อได้ แต่ยังไม่มีโมเดลใน Ollama (ลอง: ollama pull qwen3.5:4b)";
+    } catch (e) { $("localStatus").textContent = e.message; }
+    finally { btn.disabled = false; }
+  });
+
   // ---------- fill forms ----------
   function hydrate() {
     const s = settings(), t = today();
     const set = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v ?? ""; };
-    set("sWake", s.wake); set("sEve", s.evening); set("sName", s.name); set("sGoals", s.goals); set("sModel", s.model);
+    set("sWake", s.wake); set("sEve", s.evening); set("sName", s.name); set("sGoals", s.goals); set("sModel", s.model); set("sProvider", s.provider); set("sLocalUrl", s.localUrl);
+    ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     try { set("sKey", localStorage.getItem(LS_KEY) || ""); } catch {}
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);
     set("eNotes", t.evening.notes); set("eWins", t.evening.wins); set("eTomorrow", t.evening.tomorrow); setScale($("eMood"), t.evening.mood);
-    if (t.evening.reflection) { $("reflection").hidden = false; $("reflection").innerHTML = `<h3>สรุปจาก Claude</h3><p>${esc(t.evening.reflection)}</p>`; }
+    if (t.evening.reflection) { $("reflection").hidden = false; $("reflection").innerHTML = `<h3>สรุปจาก AI</h3><p>${esc(t.evening.reflection)}</p>`; }
     else { $("reflection").hidden = true; }
     renderBrief(); renderAlarms(); if (!$("p-evening").hidden) renderChecks();
   }

@@ -113,6 +113,7 @@ select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(-
 .toggle{display:flex;gap:10px;align-items:center;cursor:pointer;font-weight:600}
 .toggle input{width:22px;height:22px;accent-color:var(--accent)}
 .alarm-row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
+code{font-family:var(--f-mono);font-size:.85em;background:var(--bg);padding:1px 5px;border-radius:5px;border:1px solid var(--line)}
 input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 </style>
 </head>
@@ -146,7 +147,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   <section class="panel" id="p-morning" role="tabpanel">
     <div class="card">
       <h2>Morning Beep</h2>
-      <p class="muted small">เล่าสั้น ๆ ว่าวันนี้มีอะไร แล้วให้ Claude ช่วยจัดลำดับงาน บอกสิ่งที่ควรระวัง และวางแผนวันให้</p>
+      <p class="muted small">เล่าสั้น ๆ ว่าวันนี้มีอะไร แล้วให้ AI ช่วยจัดลำดับงาน บอกสิ่งที่ควรระวัง และวางแผนวันให้</p>
       <div class="field">
         <label for="mTasks">วันนี้มีงาน นัด หรือเรื่องอะไรบ้าง</label>
         <textarea id="mTasks" placeholder="เช่น ประชุมทีม 10:00, ส่งใบเสนอราคาให้ลูกค้า, ไปรับลูก 16:30"></textarea>
@@ -195,7 +196,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       </div>
       <div class="row">
         <button class="btn dusk" id="eSaveBtn" type="button">บันทึกวันนี้</button>
-        <button class="btn" id="reflectBtn" type="button">ขอสรุปจาก Claude</button>
+        <button class="btn" id="reflectBtn" type="button">ขอสรุปจาก AI</button>
       </div>
       <p class="status" id="eStatus"></p>
       <div id="reflection" class="sec" hidden></div>
@@ -243,28 +244,51 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <h2>ข้อมูลส่วนตัว</h2>
       <div class="field">
         <label for="sName">ชื่อเล่น</label>
-        <input type="text" id="sName" placeholder="ให้ Claude เรียกคุณว่าอะไร">
+        <input type="text" id="sName" placeholder="ให้ AI เรียกคุณว่าอะไร">
       </div>
       <div class="field">
         <label for="sGoals">เป้าหมายระยะยาว หรือเรื่องที่อยากให้ช่วยดูแล</label>
         <textarea id="sGoals" placeholder="เช่น ออกกำลังกาย 3 วัน/สัปดาห์, เลิกเลื่อนงานเอกสาร, นอนก่อนเที่ยงคืน"></textarea>
-        <span class="hint">Claude จะใช้ข้อมูลนี้ทุกครั้งที่วางแผนให้</span>
+        <span class="hint">AI จะใช้ข้อมูลนี้ทุกครั้งที่วางแผนให้</span>
       </div>
     </div>
     <div class="card">
-      <h2>เชื่อมต่อ Claude</h2>
+      <h2>ผู้ช่วย AI</h2>
       <div class="field">
-        <label for="sKey">Claude API key</label>
-        <input type="password" id="sKey" placeholder="sk-ant-..." autocomplete="off">
-        <span class="hint">สร้างได้ที่ console.anthropic.com เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกรวมในไฟล์ส่งออก ค่าใช้จ่ายคิดตามการใช้งานจริงในบัญชี API ของคุณ</span>
-      </div>
-      <div class="field">
-        <label for="sModel">โมเดล</label>
-        <select id="sModel">
-          <option value="claude-opus-5-5">Claude Opus 5.5 (ฉลาดที่สุด)</option>
-          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (เร็ว ราคากลาง)</option>
-          <option value="claude-haiku-5-5">Claude Haiku 5.5 (ถูกที่สุด)</option>
+        <label for="sProvider">ใช้ AI จากที่ไหน</label>
+        <select id="sProvider">
+          <option value="local">AI ในเครื่องนี้ (Ollama ใน Termux) ฟรี</option>
+          <option value="claude">Claude API (ต้องเติมเงิน API)</option>
         </select>
+      </div>
+      <div class="sec" id="localBox">
+        <div class="field">
+          <label for="sLocalUrl">ที่อยู่เซิร์ฟเวอร์ Ollama</label>
+          <input type="text" id="sLocalUrl" value="http://127.0.0.1:11434" autocomplete="off" inputmode="url">
+        </div>
+        <div class="field">
+          <label for="sLocalModel">โมเดล</label>
+          <select id="sLocalModel"><option value="qwen-fast:latest">qwen-fast:latest</option></select>
+          <span class="hint">กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อโมเดลจาก Ollama</span>
+        </div>
+        <div class="row"><button class="btn" id="testLocal" type="button">ทดสอบการเชื่อมต่อ</button></div>
+        <p class="status" id="localStatus"></p>
+        <p class="small muted">ก่อนใช้ ให้เปิด Termux แล้วรัน <code>termux-wake-lock; ollama serve</code> ค้างไว้ โมเดลในมือถืออาจใช้เวลาตอบ 1-3 นาที</p>
+      </div>
+      <div class="sec" id="claudeBox" hidden>
+        <div class="field">
+          <label for="sKey">Claude API key</label>
+          <input type="password" id="sKey" placeholder="sk-ant-..." autocomplete="off">
+          <span class="hint">สร้างได้ที่ console.anthropic.com เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกรวมในไฟล์ส่งออก ค่าใช้จ่ายคิดตามการใช้งานจริงในบัญชี API ของคุณ</span>
+        </div>
+        <div class="field">
+          <label for="sModel">โมเดล</label>
+          <select id="sModel">
+            <option value="claude-opus-5-5">Claude Opus 5.5 (ฉลาดที่สุด)</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (เร็ว ราคากลาง)</option>
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 (ถูกที่สุด)</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="row"><button class="btn primary" id="sSaveBtn" type="button">บันทึกการตั้งค่า</button></div>
