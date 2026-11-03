@@ -51,9 +51,9 @@ p{margin:0}
 .armbar p{flex:1 1 220px;min-width:0}
 
 /* tabs */
-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
-nav button{border:0;background:transparent;color:var(--muted);font:600 .95rem var(--f-display);padding:8px 4px;border-radius:999px;cursor:pointer}
+nav button{border:0;background:transparent;color:var(--muted);font:600 .82rem var(--f-display);padding:8px 2px;min-width:0;white-space:nowrap;border-radius:999px;cursor:pointer}
 nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
 
 .panel{display:flex;flex-direction:column;gap:16px}
@@ -114,6 +114,22 @@ select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(-
 .toggle input{width:22px;height:22px;accent-color:var(--accent)}
 .alarm-row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
 code{font-family:var(--f-mono);font-size:.85em;background:var(--bg);padding:1px 5px;border-radius:5px;border:1px solid var(--line)}
+.link-btn{border:0;background:none;color:var(--accent);font:600 .82rem var(--f-display);padding:0 4px;cursor:pointer;text-decoration:underline}
+.link-btn:disabled{color:var(--muted);text-decoration:none;cursor:default}
+.small-btn{padding:4px 10px;font-size:.8rem}
+.day.rem .chips{grid-column:1/-1;justify-content:flex-end;align-items:center}
+.day.rem.off{opacity:.55}
+.chat{display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:10px 12px;border-radius:14px;white-space:pre-wrap;word-break:break-word;min-width:0}
+.msg.user{align-self:flex-end;background:var(--ink);color:var(--bg);border-bottom-right-radius:4px}
+.msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.note{align-self:center;background:var(--accent-soft);color:var(--ink);font-size:.85rem;border-radius:10px}
+.msg .t{display:block;font-size:.72rem;color:var(--muted);margin-top:4px}
+.msg.user .t{color:inherit;opacity:.7}
+.composer{display:flex;gap:8px;align-items:flex-end;position:sticky;bottom:env(safe-area-inset-bottom,0px);background:var(--bg);padding-block:8px}
+.composer textarea{min-height:48px;flex:1;min-width:0}
+.suggest{display:flex;gap:6px;flex-wrap:wrap}
+.suggest button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font:500 .82rem var(--f-body);cursor:pointer}
 input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 </style>
 </head>
@@ -139,6 +155,8 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   <nav role="tablist" aria-label="ส่วนของแอป">
     <button role="tab" id="tab-morning" aria-selected="true" data-tab="morning">เช้า</button>
     <button role="tab" id="tab-evening" aria-selected="false" data-tab="evening">เย็น</button>
+    <button role="tab" id="tab-chat" aria-selected="false" data-tab="chat">ผู้ช่วย</button>
+    <button role="tab" id="tab-remind" aria-selected="false" data-tab="remind">เตือน</button>
     <button role="tab" id="tab-history" aria-selected="false" data-tab="history">ประวัติ</button>
     <button role="tab" id="tab-settings" aria-selected="false" data-tab="settings">ตั้งค่า</button>
   </nav>
@@ -203,6 +221,52 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
     </div>
   </section>
 
+  <!-- CHAT -->
+  <section class="panel" id="p-chat" role="tabpanel" hidden>
+    <div class="card">
+      <h2>ผู้ช่วย AI</h2>
+      <p class="muted small">พิมพ์ถามหรือสั่งงานได้เลย ผู้ช่วยรู้แผนวันนี้และการเตือนของคุณ ขอให้ตั้งเตือนได้ เช่น "เตือนฉันบ่าย 3 ให้โทรหาแม่"</p>
+      <div class="suggest" id="chatSuggest">
+        <button type="button">วันนี้ควรเริ่มจากงานไหนก่อน</button>
+        <button type="button">เตือนฉันพรุ่งนี้ 8 โมงให้ส่งรายงาน</button>
+        <button type="button">ช่วยสรุปสัปดาห์นี้ให้หน่อย</button>
+      </div>
+    </div>
+    <div class="chat" id="chatLog"></div>
+    <div class="composer">
+      <textarea id="chatInput" placeholder="พิมพ์ข้อความถึงผู้ช่วย…" rows="2"></textarea>
+      <button class="btn primary" id="chatSend" type="button">ส่ง</button>
+    </div>
+    <div class="row"><p class="status" id="chatStatus"></p><button class="link-btn" id="chatClear" type="button">ล้างบทสนทนา</button></div>
+  </section>
+
+  <!-- REMINDERS -->
+  <section class="panel" id="p-remind" role="tabpanel" hidden>
+    <div class="card">
+      <h2>เตือนความจำ</h2>
+      <div class="field">
+        <label for="rText">เตือนเรื่องอะไร</label>
+        <input type="text" id="rText" placeholder="เช่น กินยา, โทรหาลูกค้า, ส่งรายงาน">
+      </div>
+      <div class="alarm-row">
+        <div class="field"><label for="rTime">เวลา</label><input type="time" id="rTime" value="09:00"></div>
+        <div class="field"><label for="rRepeat">ซ้ำ</label>
+          <select id="rRepeat">
+            <option value="once">ครั้งเดียว</option>
+            <option value="daily">ทุกวัน</option>
+            <option value="weekdays">จันทร์-ศุกร์</option>
+            <option value="weekly">ทุกสัปดาห์</option>
+          </select>
+        </div>
+        <div class="field" id="rDateField"><label for="rDate">วันที่</label><input type="date" id="rDate"></div>
+      </div>
+      <div class="row"><button class="btn primary" id="rAdd" type="button">เพิ่มการเตือน</button></div>
+      <p class="status" id="rStatus"></p>
+      <p class="small muted">การแจ้งเตือนมีปุ่ม "เลื่อน 10 นาที" และ "เสร็จแล้ว" การเตือนแบบทุกสัปดาห์จะซ้ำในวันเดียวกับวันที่ที่เลือก</p>
+    </div>
+    <div class="hist" id="rList"></div>
+  </section>
+
   <!-- HISTORY -->
   <section class="panel" id="p-history" role="tabpanel" hidden>
     <div class="card">
@@ -236,6 +300,17 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <label class="toggle"><input type="checkbox" id="sEveOn" checked> เปิด</label>
       </div>
       <p class="small muted">ปลุกด้วยระบบ Android แม้ปิดแอปหรือล็อกจออยู่ เสียงจะดังซ้ำจนกว่าจะกดหยุด (นานสุด 3 นาที)</p>
+      <div class="field">
+        <label for="sPrep">เตรียมแผนให้ก่อนเวลาปลุก</label>
+        <select id="sPrep">
+          <option value="0">ไม่ต้องเตรียม</option>
+          <option value="5">5 นาทีก่อนปลุก</option>
+          <option value="10">10 นาทีก่อนปลุก</option>
+          <option value="15">15 นาทีก่อนปลุก</option>
+          <option value="30">30 นาทีก่อนปลุก</option>
+        </select>
+        <span class="hint">AI จะทำแผนจากงานที่ยกมาจากเมื่อวานและการเตือนของวันนั้นไว้ให้ ถ้าใช้ AI ในเครื่อง ต้องเปิด Termux ค้างไว้</span>
+      </div>
       <div class="row">
         <button class="btn" id="testBeep" type="button">ทดสอบเสียงปลุก</button>
       </div>
