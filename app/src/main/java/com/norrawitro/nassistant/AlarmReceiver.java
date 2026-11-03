@@ -20,6 +20,11 @@ public class AlarmReceiver extends BroadcastReceiver {
     public void onReceive(Context c, Intent intent) {
         String kind = intent.getStringExtra("kind");
         if (kind == null) kind = AlarmScheduler.KIND_MORNING;
+        if (AlarmScheduler.KIND_PREP.equals(kind)) {
+            AiService.startPrep(c);
+            AlarmScheduler.rescheduleAll(c);
+            return;
+        }
         ring(c, kind);
         AlarmScheduler.rescheduleAll(c);
     }
@@ -56,7 +61,8 @@ public class AlarmReceiver extends BroadcastReceiver {
         Notification.Builder b = new Notification.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle(evening ? "เย็นแล้ว วันนี้เป็นยังไงบ้าง" : "อรุณสวัสดิ์ ได้เวลาวางแผนวันนี้")
-                .setContentText(evening ? "แตะเพื่อบันทึกอัปเดตวันนี้" : "แตะเพื่อดู Morning Beep ของวันนี้")
+                .setContentText(evening ? "แตะเพื่อบันทึกอัปเดตวันนี้"
+                        : AiService.preparedToday(c) ? "แผนวันนี้เตรียมไว้ให้แล้ว แตะเพื่อดู" : "แตะเพื่อดู Morning Beep ของวันนี้")
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true)

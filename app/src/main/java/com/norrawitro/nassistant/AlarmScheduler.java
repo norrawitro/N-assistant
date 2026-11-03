@@ -13,6 +13,7 @@ import java.util.Calendar;
 public final class AlarmScheduler {
     public static final String KIND_MORNING = "morning";
     public static final String KIND_EVENING = "evening";
+    public static final String KIND_PREP = "prep";
     private static final String PREFS = "alarms";
 
     private AlarmScheduler() {}
@@ -34,6 +35,30 @@ public final class AlarmScheduler {
         SharedPreferences p = prefs(c);
         schedule(c, KIND_MORNING, p.getString("morning", "06:30"), p.getBoolean("morningOn", false));
         schedule(c, KIND_EVENING, p.getString("evening", "19:30"), p.getBoolean("eveningOn", false));
+        schedulePrep(c, p.getString("morning", "06:30"), p.getBoolean("morningOn", false), p.getInt("prepMinutes", 15));
+    }
+
+    public static void setPrepMinutes(Context c, int minutes) {
+        prefs(c).edit().putInt("prepMinutes", Math.max(0, minutes)).apply();
+        rescheduleAll(c);
+    }
+
+    /** A quiet alarm some minutes before waking, so the plan is ready when the person gets up. */
+    private static void schedulePrep(Context c, String wake, boolean morningOn, int minutes) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        PendingIntent op = firePending(c, KIND_PREP);
+        am.cancel(op);
+        if (!morningOn || minutes <= 0) return;
+        long wakeAt = nextTrigger(wake);
+        if (wakeAt < 0) return;
+        long at = wakeAt - minutes * 60_000L;
+        if (at <= System.currentTimeMillis() + 1000) at += 24L * 3600_000L;
+        try {
+            if (canExact(c)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, op);
+            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, op);
+        } catch (SecurityException e) {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, op);
+        }
     }
 
     /** Next trigger time in millis for an "HH:MM" string, or -1 if it cannot be parsed. */
@@ -61,7 +86,8 @@ public final class AlarmScheduler {
     private static PendingIntent firePending(Context c, String kind) {
         Intent i = new Intent(c, AlarmReceiver.class).setAction("com.norrawitro.nassistant.ALARM." + kind)
                 .putExtra("kind", kind);
-        return PendingIntent.getBroadcast(c, KIND_MORNING.equals(kind) ? 1 : 2, i,
+        int code = KIND_MORNING.equals(kind) ? 1 : KIND_EVENING.equals(kind) ? 2 : 3;
+        return PendingIntent.getBroadcast(c, code, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 

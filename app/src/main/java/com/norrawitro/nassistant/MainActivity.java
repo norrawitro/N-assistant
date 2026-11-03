@@ -40,6 +40,9 @@ public class MainActivity extends Activity {
     private String pendingSave;
     private File downloadedApk;
     private boolean pageReady;
+    private String pendingTab;
+    /** The activity while it is on screen, so background AI results can go straight to the page. */
+    private static volatile MainActivity visible;
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
@@ -47,6 +50,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         AlarmReceiver.ensureChannel(this);
         pendingRing = getIntent().getStringExtra("ring");
+        pendingTab = getIntent().getStringExtra("tab");
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -95,7 +99,10 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         String r = intent.getStringExtra("ring");
-        if (r != null) { pendingRing = r; deliverRing(); }
+        if (r != null) pendingRing = r;
+        String t = intent.getStringExtra("tab");
+        if (t != null) pendingTab = t;
+        deliverRing();
     }
 
     @Override
@@ -105,9 +112,29 @@ public class MainActivity extends Activity {
     }
 
     private void deliverRing() {
-        if (pendingRing == null || !pageReady) return;
-        emit("ring", JSONObject.quote(pendingRing));
-        pendingRing = null;
+        if (!pageReady) return;
+        if (pendingRing != null) {
+            emit("ring", JSONObject.quote(pendingRing));
+            pendingRing = null;
+        }
+        if (pendingTab != null) {
+            emit("tab", JSONObject.quote(pendingTab));
+            pendingTab = null;
+        }
+    }
+
+    /** Hands a finished AI job to the page if the app is on screen. Returns false when nobody is looking. */
+    static boolean deliver(JSONObject res) {
+        MainActivity a = visible;
+        if (a == null || !a.pageReady) return false;
+        a.emit("job", res.toString());
+        return true;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (visible == this) visible = null;
     }
 
     /** Calls window.__native(event, payload) in the page. payload must already be valid JS. */
@@ -141,6 +168,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        visible = this;
         // Coming back from the "install unknown apps" setting: continue the install if allowed now.
         if (downloadedApk != null && Updater.ensureInstallAllowedSilently(this)) {
             File apk = downloadedApk;
@@ -201,6 +229,34 @@ public class MainActivity extends Activity {
                             .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
                 } catch (Exception ignored) {}
             });
+        }
+
+        /** Starts an AI job in the background service. The answer arrives as the "job" event or via takeResults(). */
+        @JavascriptInterface
+        public void runJob(String jobJson) {
+            AiService.start(MainActivity.this, jobJson);
+        }
+
+        @JavascriptInterface
+        public String takeResults() {
+            return AiService.takeResults(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void ackResult(String id) {
+            AiService.ack(MainActivity.this, id);
+        }
+
+        /** Jobs keyed by date ("YYYY-MM-DD") to run before that morning's alarm. */
+        @JavascriptInterface
+        public void setPrepJobs(String jobsJson, int minutesBefore) {
+            AiService.prefs(MainActivity.this).edit().putString("prepJobs", jobsJson).apply();
+            AlarmScheduler.setPrepMinutes(MainActivity.this, minutesBefore);
+        }
+
+        @JavascriptInterface
+        public void setReminders(String json) {
+            Reminders.save(MainActivity.this, json);
         }
 
         @JavascriptInterface
