@@ -411,6 +411,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
           <option value="local">AI ในเครื่องนี้ (Ollama ใน Termux) ฟรี</option>
           <option value="claude">Claude API (ต้องเติมเงิน API)</option>
           <option value="openai">ผู้ให้บริการอื่น (OpenAI, Gemini, Groq, OpenRouter, DeepSeek ฯลฯ)</option>
+          <option value="githubmd">คุยผ่านไฟล์ MD บน GitHub (AI ภายนอกมาตอบ ช้า)</option>
         </select>
       </div>
       <div class="sec" id="localBox">
@@ -443,6 +444,28 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
           </div>
           <p class="status" id="termuxStatus"></p>
         </div>
+      </div>
+      <div class="sec" id="mdBox" hidden>
+        <p class="small muted">แอปเขียนสิ่งที่คุณพูดลงไฟล์ .md ใน repo แล้ว AI ภายนอกมาอ่านและเขียนคำตอบลงไฟล์เดียวกัน แอปจะรอคำตอบแล้วพูดออกเสียง ใช้เวลาประมาณ 10 วินาทีถึง 1 นาทีขึ้นไป ข้อความในไฟล์ถูกเข้ารหัสทุกครั้ง รูปแบบไฟล์อยู่ใน README ของแอป</p>
+        <div class="field">
+          <label for="sMdRepo">repo (เจ้าของ/ชื่อ)</label>
+          <input type="text" id="sMdRepo" placeholder="norrawitro/ชื่อ-repo" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="sMdPath">ไฟล์ใน repo</label>
+          <input type="text" id="sMdPath" placeholder="chat/n-assistant.md" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="sMdToken">GitHub token (fine-grained เฉพาะ repo นี้ สิทธิ์ Contents: Read and write)</label>
+          <input type="password" id="sMdToken" autocomplete="off" spellcheck="false">
+          <span class="hint">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกรวมในไฟล์ส่งออก</span>
+        </div>
+        <div class="field">
+          <label for="sMdKey">กุญแจเข้ารหัส (อย่างน้อย 16 ตัว ตัวอังกฤษหรือตัวเลข)</label>
+          <input type="password" id="sMdKey" autocomplete="off" spellcheck="false">
+          <span class="hint">AI ฝั่งที่ตอบต้องใช้กุญแจเดียวกัน เก็บไว้ในเครื่องนี้เท่านั้น</span>
+        </div>
+        <div class="row"><button class="btn" id="mdNewKey" type="button">สร้างกุญแจใหม่</button><button class="btn" id="mdShowKey" type="button">แสดงกุญแจ</button></div>
       </div>
       <div class="sec" id="otherBox" hidden>
         <div class="field">
