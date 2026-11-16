@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Dark theme always (owner rule 2026-11-16), whatever the phone's own setting. -->
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
-    <color name="bg">#EEF1F4</color>
+    <color name="bg">#12161D</color>
     <color name="accent">#D9731F</color>
     <color name="icon_bg">#1B2430</color>
 </resources>

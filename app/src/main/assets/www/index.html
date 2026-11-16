@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="th">
+<html lang="th" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -51,6 +51,31 @@ p{margin:0}
 .armbar p{flex:1 1 220px;min-width:0}
 
 /* tabs */
+/* Top bar: menu (old features) on the left, settings on the right */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar .title{font:700 1.05rem var(--f-display);letter-spacing:.02em}
+.icon-btn{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;cursor:pointer;font-size:1.25rem;line-height:1}
+.icon-btn svg{width:22px;height:22px}
+.menu{position:absolute;top:56px;left:0;z-index:20;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column}
+.menu button{border:0;background:transparent;color:var(--ink);text-align:left;font:600 1rem var(--f-display);padding:12px 14px;border-radius:10px;cursor:pointer}
+.menu button[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+.topwrap{position:relative}
+/* Live */
+.live-hero{display:flex;flex-direction:column;align-items:center;gap:14px;padding:12px 0 4px}
+.live-switch{width:min(62vw,240px);aspect-ratio:1;border-radius:50%;border:3px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;font:700 1.6rem var(--f-display);letter-spacing:.08em;transition:background .2s,border-color .2s,color .2s,box-shadow .2s}
+.live-switch .sw-sub{display:block;font:600 .85rem var(--f-body);letter-spacing:0;margin-top:2px}
+.live-switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 10px var(--accent-soft)}
+.live-switch[data-state="listening"]{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 18px var(--accent-soft)}}
+@media (prefers-reduced-motion: reduce){.live-switch[data-state="listening"]{animation:none}}
+.live-status{min-height:1.6em;text-align:center}
+.live-partial{min-height:1.5em;text-align:center;color:var(--muted);font-size:.95rem}
+.convo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;overscroll-behavior:contain}
+.convo li{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;max-width:88%;overflow-wrap:anywhere}
+.convo li.me{align-self:flex-end;background:var(--dusk-soft)}
+.convo li.app{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.convo .who{font:600 .74rem var(--f-mono);color:var(--muted)}
+.convo-empty{color:var(--muted);text-align:center;padding:12px 0}
 nav{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 nav button{border:0;background:transparent;color:var(--muted);font:600 .82rem var(--f-display);padding:8px 2px;min-width:0;white-space:nowrap;border-radius:999px;cursor:pointer}
@@ -135,6 +160,27 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
 </head>
 <body>
 <div class="wrap">
+  <div class="topwrap">
+    <div class="topbar">
+      <button class="icon-btn" id="menuBtn" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <span class="title" id="viewTitle">Live</span>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="ตั้งค่า">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+    <div class="menu" id="menu" role="menu" hidden>
+      <button role="menuitem" type="button" data-go="live">Live (หน้าแรก)</button>
+      <button role="menuitem" type="button" data-go="morning">เช้า</button>
+      <button role="menuitem" type="button" data-go="evening">เย็น</button>
+      <button role="menuitem" type="button" data-go="chat">ผู้ช่วย</button>
+      <button role="menuitem" type="button" data-go="remind">เตือน</button>
+      <button role="menuitem" type="button" data-go="history">ประวัติ</button>
+      <button role="menuitem" type="button" data-go="settings">ตั้งค่า</button>
+    </div>
+  </div>
+
   <header class="clock">
     <div>
       <div class="time" id="now">--:--</div>
@@ -152,7 +198,23 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   </div>
   <div class="warn-box" id="permWarn" hidden></div>
 
-  <nav role="tablist" aria-label="ส่วนของแอป">
+  <!-- LIVE (home) -->
+  <section class="panel" id="p-live" role="tabpanel">
+    <div class="live-hero">
+      <button class="live-switch" id="liveSwitch" type="button" role="switch" aria-checked="false" data-state="off">
+        <span>LIVE<span class="sw-sub" id="liveSub">แตะเพื่อเปิด</span></span>
+      </button>
+      <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (รอบทดสอบ ยังไม่ใช้ AI)</p>
+      <p class="live-partial" id="livePartial" aria-live="polite"></p>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h3>บันทึกการสนทนา</h3><button class="link-btn" id="convoClear" type="button">ล้าง</button></div>
+      <ol class="convo" id="convo" aria-live="polite"></ol>
+      <p class="small muted">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นที่ไหน</p>
+    </div>
+  </section>
+
+  <nav role="tablist" aria-label="ส่วนของแอป" hidden>
     <button role="tab" id="tab-morning" aria-selected="true" data-tab="morning">เช้า</button>
     <button role="tab" id="tab-evening" aria-selected="false" data-tab="evening">เย็น</button>
     <button role="tab" id="tab-chat" aria-selected="false" data-tab="chat">ผู้ช่วย</button>
