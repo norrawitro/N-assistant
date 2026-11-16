@@ -17,11 +17,13 @@
   const LS_DOCS = "nassistant.docs";
   const LS_KEY = "nassistant.apikey";
   const LS_OTHER_KEY = "nassistant.apikey.other"; // key for the "other provider" option; stays on this phone
+  const LS_MD_TOKEN = "nassistant.mdchat.token"; // GitHub token for the Markdown-file channel; stays on this phone
+  const LS_MD_KEY = "nassistant.mdchat.key";     // AES key for the Markdown-file channel; stays on this phone
   const LS_PENDING = "nassistant.pending";
   let docs = lsGet(LS_DOCS) || {}; // "settings", "reminders", "day-YYYY-MM-DD"
   function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); schedulePrepSync(); }
 
-  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5", otherUrl: "", otherModel: "" };
+  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5", otherUrl: "", otherModel: "", mdRepo: "", mdPath: "chat/n-assistant.md" };
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(docs.settings || {}) });
   const dayKey = date => "day-" + date;
   const todayDate = () => keyOf(new Date());
@@ -143,6 +145,7 @@
   const aiName = () => {
     const s = settings();
     if (s.provider === "claude") return "Claude";
+    if (s.provider === "githubmd") return "ผ่านไฟล์ MD บน GitHub";
     if (s.provider === "openai") { const o = [...$("sOtherPreset").options].find(x => x.value && x.value === String(s.otherUrl || "").replace(/\/+$/, "")); return (o ? o.textContent : "ผู้ให้บริการอื่น") + (s.otherModel ? " " + s.otherModel : ""); }
     return "AI ในเครื่อง";
   };
@@ -153,7 +156,8 @@
   let liveJob = null; // { id, at, timer, tick }
   function thinkingText() {
     const sec = liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0;
-    const slow = settings().provider === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : "";
+    const pv = settings().provider;
+    const slow = pv === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : pv === "githubmd" ? " รอ AI ภายนอกตอบในไฟล์ MD (10 วินาที–1 นาทีขึ้นไป)" : "";
     return `กำลังคิด… ${sec} วินาที${slow}`;
   }
   function stopThinking() {
@@ -198,7 +202,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
   async function askLiveAI(text) {
     stopThinking();
     let job;
-    try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low" }); }
+    try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
     catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return; }
     liveJob = { id: job.id, at: Date.now() };
     liveJob.tick = setInterval(() => { if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText(); }, 1000);
@@ -206,7 +210,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
       if (!liveJob || liveJob.id !== job.id) return;
       stopThinking(); clearPending("live", "live");
       liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
-    }, LIVE_TIMEOUT_MS);
+    }, settings().provider === "githubmd" ? LIVE_TIMEOUT_MS + 90 * 1000 : LIVE_TIMEOUT_MS); // the file channel waits 5 min itself
     $("liveStatus").textContent = thinkingText();
     await startJob(job);
   }
@@ -339,9 +343,11 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
   };
   function apiKey() { try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } }
   function otherKey() { try { return localStorage.getItem(LS_OTHER_KEY) || ""; } catch { return ""; } }
+  const lsStr = k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  function lsPut(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} }
 
   /** Builds the request the native service sends. Throws with a message the person can act on. */
-  function buildJob(kind, date, prompt, { schema = null, effort = "medium" } = {}) {
+  function buildJob(kind, date, prompt, { schema = null, effort = "medium", userText = "" } = {}) {
     const s = settings();
     const job = { id: uid(), kind, date };
     if (s.provider === "claude") {
@@ -353,6 +359,15 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
       // If a safety check declines the request, let the API retry on its recommended fallback model.
       if (s.model !== "claude-haiku-5-5") { body.fallbacks = "default"; headers["anthropic-beta"] = "server-side-fallback-2026-07-01"; }
       Object.assign(job, { format: "claude", url: "https://api.anthropic.com/v1/messages", headers, body });
+    } else if (s.provider === "githubmd") {
+      // Talk through a Markdown file on GitHub. Live sends only what was said; other features send the full prompt.
+      const repo = String(s.mdRepo || "").trim(), path = String(s.mdPath || "").trim().replace(/^\/+/, "");
+      const token = lsStr(LS_MD_TOKEN), key = lsStr(LS_MD_KEY);
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("ยังไม่ได้ใส่ repo ของไฟล์ MD ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!/\.md$/i.test(path)) throw new Error("ยังไม่ได้ใส่ไฟล์ .md ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!token) throw new Error("ยังไม่ได้ใส่ GitHub token ไปที่ \"ตั้งค่า\" ก่อน");
+      if (key.length < 16) throw new Error("ยังไม่ได้ใส่กุญแจเข้ารหัส ไปที่ \"ตั้งค่า\" ก่อน");
+      Object.assign(job, { format: "githubmd", url: "", headers: {}, body: {}, repo, path, token, key, text: userText || prompt });
     } else if (s.provider === "openai") {
       // Any provider with an OpenAI-compatible API. JSON is asked for in the prompt, which every provider supports.
       const base = String(s.otherUrl || "").trim().replace(/\/+$/, "");
@@ -749,10 +764,15 @@ ${contextText(date)}
       evening: $("sEve").value || "19:30", eveningOn: $("sEveOn").checked, prepMinutes: +$("sPrep").value || 0,
       name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value,
       otherUrl: $("sOtherUrl").value.trim(), otherModel: $("sOtherModel").value.trim(),
+      mdRepo: $("sMdRepo").value.trim(), mdPath: $("sMdPath").value.trim() || "chat/n-assistant.md",
       provider: $("sProvider").value, localUrl: $("sLocalUrl").value.trim() || DEFAULT_SETTINGS.localUrl, localModel: $("sLocalModel").value || DEFAULT_SETTINGS.localModel, updatedAt: Date.now()
     });
     try { const k = $("sKey").value.trim(); if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY); } catch {}
     try { const k = $("sOtherKey").value.trim(); if (k) localStorage.setItem(LS_OTHER_KEY, k); else localStorage.removeItem(LS_OTHER_KEY); } catch {}
+    lsPut(LS_MD_TOKEN, $("sMdToken").value.trim());
+    const mdKey = $("sMdKey").value.trim();
+    if (mdKey && mdKey.length < 16) { $("sStatus").textContent = "กุญแจเข้ารหัสของไฟล์ MD ต้องยาวอย่างน้อย 16 ตัว (ส่วนอื่นบันทึกแล้ว)"; }
+    else lsPut(LS_MD_KEY, mdKey);
     if ($("liveSwitch").getAttribute("aria-checked") !== "true") setLiveMode(liveMode); // refresh the AI name on the Live screen
     pushAlarms();
     $("sStatus").textContent = "บันทึกการตั้งค่าแล้ว";
@@ -803,9 +823,18 @@ ${contextText(date)}
   // ---------- provider settings ----------
   function showProviderBox() {
     const p = $("sProvider").value;
-    $("claudeBox").hidden = p !== "claude"; $("localBox").hidden = p !== "local"; $("otherBox").hidden = p !== "openai";
+    $("claudeBox").hidden = p !== "claude"; $("localBox").hidden = p !== "local"; $("otherBox").hidden = p !== "openai"; $("mdBox").hidden = p !== "githubmd";
     if (p === "local") renderTermux();
   }
+  $("mdNewKey").addEventListener("click", () => {
+    if ($("sMdKey").value && !confirm("สร้างกุญแจใหม่แทนกุญแจเดิม? AI ฝั่งที่ตอบต้องเปลี่ยนเป็นกุญแจใหม่ด้วย")) return;
+    const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = new Uint32Array(32);
+    crypto.getRandomValues(r);
+    $("sMdKey").value = Array.from(r, n => abc[n % abc.length]).join("");
+    $("sMdKey").type = "text"; $("mdShowKey").textContent = "ซ่อนกุญแจ";
+    $("sStatus").textContent = "สร้างกุญแจแล้ว จดไว้ให้ AI ฝั่งที่ตอบ แล้วกด \"บันทึกการตั้งค่า\"";
+  });
+  $("mdShowKey").addEventListener("click", () => { const show = $("sMdKey").type === "password"; $("sMdKey").type = show ? "text" : "password"; $("mdShowKey").textContent = show ? "ซ่อนกุญแจ" : "แสดงกุญแจ"; });
   $("sOtherPreset").addEventListener("change", () => { const v = $("sOtherPreset").value; if (v) $("sOtherUrl").value = v; $("sOtherUrl").focus(); });
 
   // ---------- Termux: let the app start "ollama serve" by itself ----------
@@ -916,6 +945,7 @@ ${contextText(date)}
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
     set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey());
+    set("sMdRepo", s.mdRepo); set("sMdPath", s.mdPath || "chat/n-assistant.md"); set("sMdToken", lsStr(LS_MD_TOKEN)); set("sMdKey", lsStr(LS_MD_KEY));
     { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);
     set("eNotes", t.evening.notes); set("eWins", t.evening.wins); set("eTomorrow", t.evening.tomorrow); setScale($("eMood"), t.evening.mood);

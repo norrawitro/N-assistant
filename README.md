@@ -68,3 +68,48 @@ Pull request จะ build APK ไว้ทดสอบด้วย (ดาวน
 - `AlarmScheduler.java`, `AlarmReceiver.java`, `BootReceiver.java` ระบบนาฬิกาปลุก
 - `Updater.java` ตรวจและดาวน์โหลดเวอร์ชันใหม่จาก GitHub Releases
 - `.github/workflows/android.yml` build APK และออก Release
+
+## ช่องทางคุยผ่านไฟล์ MD บน GitHub (Markdown chat file, format v1)
+
+In Settings → ผู้ช่วย AI → "คุยผ่านไฟล์ MD บน GitHub", the app talks to **any outside AI** through one Markdown file in a GitHub repo:
+
+1. The app appends a **question** section.
+2. The outside AI reads the newest unanswered question and appends an **answer** section with the same id.
+3. The app reads the file every 5 seconds, for up to 5 minutes, then speaks the answer.
+
+**Settings on the phone:**
+- repo (`owner/name`) and the file path (`.md`);
+- a fine-grained GitHub token for that repo only, with Contents: Read and write;
+- an encryption key of at least 16 characters.
+
+The token and the key stay on the phone. They are not in exports or in this repository.
+
+### File format
+
+```markdown
+# N-assistant chat
+
+## Q 20261116-021500-0a1b
+- from: n-assistant
+- kind: live
+- time: 2026-11-16T02:15:00+0700
+- enc: aes-256-cbc+pbkdf2-sha256-200000+base64
+
+U2FsdGVkX1+...one line of base64...
+
+## A 20261116-021500-0a1b
+- from: my-ai
+- time: 2026-11-16T02:15:20+0700
+- enc: aes-256-cbc+pbkdf2-sha256-200000+base64
+
+U2FsdGVkX1+...one line of base64...
+```
+
+- **Ids:** each question has a unique id: `## Q <yyyyMMdd-HHmmss-xxxx>`. The answer must use **the same id**: `## A <id>`. Put the answer anywhere after the question, normally straight after it.
+- **Metadata:** lines starting with `- ` hold metadata. `kind` is `live` for voice, where the body is only what the person said; other features (`chat`, `brief`, `reflection`) send the app's full prompt.
+- **Body:** a single line, always encrypted. The app rejects answers that are not encrypted.
+  - Encrypt: `openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -a -A -pass pass:KEY`
+  - Decrypt: `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -a -A -pass pass:KEY`
+  - That is PBKDF2-HMAC-SHA256, 200000 iterations, an 8-byte salt, 32-byte key + 16-byte IV, the OpenSSL `Salted__` header, and base64 on one line, the same as NRW `chat.sh`.
+- **Answer text, decrypted:** either plain spoken Thai, or JSON `{"reply": "...", "reminders": [{"text","time":"HH:MM","date":"YYYY-MM-DD","repeat":"once|daily|weekdays|weekly"}], "open": ""}`. `reply` is spoken. `reminders` are set in the app. `open` can be `morning`, `evening`, `chat`, `remind`, `history` or `settings`.
+- **Writing:** write the file with the GitHub contents API, using the file's current `sha`. On a conflict, read the file again and retry.

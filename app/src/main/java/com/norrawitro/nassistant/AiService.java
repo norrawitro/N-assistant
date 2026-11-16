@@ -155,6 +155,20 @@ public class AiService extends Service {
 
     /** With a context, a local job whose Ollama is not running first asks Termux to start it, then tries once more. */
     static JSONObject run(Context ctx, JSONObject job) throws Exception {
+        if ("githubmd".equals(job.optString("format"))) {
+            // Talk through a Markdown file on GitHub; an outside AI answers in the same file.
+            try {
+                String text = GithubMdChannel.exchange(job);
+                JSONObject r = base(job);
+                r.put("ok", true);
+                r.put("text", text);
+                return r;
+            } catch (GithubMdChannel.Fail f) {
+                return failure(job, f.getMessage());
+            } catch (java.io.IOException e) {
+                return failure(job, "ติดต่อ GitHub ไม่ได้: " + e.getMessage());
+            }
+        }
         String url = job.optString("url");
         String format = job.optString("format", "ollama");
         Uri u = Uri.parse(url);

@@ -110,3 +110,50 @@ Request: relayed by Manager. The owner approved adding all the options discussed
 - Not tested on a phone:
   - Termux RUN_COMMAND starting Ollama;
   - a real answer from any provider.
+
+## 2026-11-16 (later): talking through a Markdown file on GitHub
+
+Request: item 4, relayed by Manager ("ใส่ไปด้วยเลย"). A new AI choice in Settings.
+- The app writes what the owner said into an MD file on GitHub.
+- An outside AI reads the newest entry and writes its answer into the same file.
+- The app reads the answer and speaks it.
+- Slow answers (10 s to over 1 min) are acceptable.
+- Settings: repo, file path and token, kept on the phone.
+- The content must be encrypted, because the repo may be public.
+- The answering AI is not chosen yet, so the file format must be clear in the README.
+
+### What was built
+- **Provider "คุยผ่านไฟล์ MD บน GitHub"**, with these settings:
+  - repo and file path (default `chat/n-assistant.md`);
+  - GitHub token;
+  - encryption key, with "สร้างกุญแจใหม่" (32 random characters) and "แสดงกุญแจ" buttons.
+  - The token and key are stored in localStorage on the phone only. They are not in settings, exports or the repo.
+- **`GithubMdChannel`**, run by `AiService` like any other AI job:
+  1. Appends `## Q <id>` with metadata and an encrypted one-line body through the GitHub contents API. It creates the file with a short header if it does not exist, and retries once on a write conflict.
+  2. Polls the file every 5 s for up to 5 min for `## A <id>`.
+  3. Decrypts the answer.
+  - Unencrypted answers are rejected.
+  - Clear Thai errors cover: bad token (401), no write permission (403), repo not found (404), no internet, wrong key, no answer in 5 min.
+- **Encryption:** OpenSSL AES-256-CBC + PBKDF2-SHA256 at 200000 iterations, "Salted__" header, base64 on one line. This is the same as NRW `chat.sh` and the GPS-Tracker status link, which was verified with OpenSSL 3.0.13.
+- **What is sent:**
+  - Live sends only what was said (`kind: live`).
+  - Other features send their full prompt.
+  - The answer can be plain text or the same JSON as Live (`reply`, `reminders`, `open`).
+- **README:** a section "ช่องทางคุยผ่านไฟล์ MD บน GitHub" defines the format (v1) for whichever AI answers later.
+- **Live:** shows "รอ AI ภายนอกตอบในไฟล์ MD (10 วินาที–1 นาทีขึ้นไป)" while waiting. The page's own timeout is 6.5 min, so the channel's 5-minute message arrives first.
+
+### Checks
+- The answer-section parser was tested in Java against a sample file: it finds the answer with its id, ignores metadata lines, and does not match a question that has no answer.
+- Browser test with a mock bridge:
+  - settings box with the default path;
+  - key generation;
+  - the Live status text;
+  - a job sent with format githubmd, the repo, path and spoken text;
+  - the answer spoken;
+  - no secrets in the saved settings.
+  - No errors and no sideways scrolling. The earlier tests still pass.
+- Java compiles in CI.
+- Not tested:
+  - against a real repo (no token here);
+  - with a real answering AI;
+  - on the phone.
