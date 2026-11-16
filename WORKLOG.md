@@ -168,3 +168,15 @@ The owner said there was no button to go back to the home screen after leaving L
 Owner phone notes from the same session:
 - Play Protect blocked v1.0.12 at first; the owner went ahead and installed it.
 - The Termux "Run commands" permission does not appear for this app. The Termux build seems to be the Play Store one (its welcome text points to doc.termux.com). So for now Ollama is started by hand in Termux, and it was already running.
+
+## 2026-11-16 (later): the "ล้าง" button did nothing
+
+**Report:** the owner said the clear button under the conversation log did not clear anything.
+
+**Cause:** the WebView had no `WebChromeClient`. Without one, Android shows nothing for the page's `confirm()` and returns false at once, so "ล้างบันทึกการสนทนาทั้งหมด?" was always treated as "no". The same bug hit "สร้างกุญแจใหม่", which also asks first when a key already exists.
+
+**Fix:** a `WebChromeClient` that shows `confirm()` and `alert()` as Android dialogs, with "ตกลง" and "ยกเลิก" buttons. They are dark, like the app theme.
+
+**Checks:** the Java compiles in CI. The dialog itself shows only on the phone; it cannot be seen in the browser test.
+
+**Note:** GPS-Tracker has the same gap. Its "ลบ token และกุญแจ" button uses `confirm()` too. It is not fixed yet; it is left for that app's next change.
