@@ -89,6 +89,7 @@
   };
 
   // ---------- Live: Thai speech in, the same words spoken back (round 1, no AI) ----------
+  let liveJob = null; // the AI question in progress from Live: { id, at, timer, tick }
   const CONVO_KEY = "nLiveConvo";
   const CONVO_MAX = 300;
   let convo = [];
@@ -104,6 +105,12 @@
       const p = document.createElement("span"); p.textContent = m.text;
       li.append(w, p); ol.appendChild(li);
     });
+    if (liveJob) { // the AI is still working on the last thing that was said, whether Live is on or off
+      const li = document.createElement("li"); li.className = "app thinking"; li.id = "convoThinking";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = "ตอบ · กำลังคิด";
+      const p = document.createElement("span"); p.id = "convoThinkingText"; p.textContent = thinkingText();
+      li.append(w, p); ol.appendChild(li);
+    }
     ol.scrollTop = ol.scrollHeight;
   }
   function addConvo(who, text) { convo.push({ t: Date.now(), who, text }); if (convo.length > CONVO_MAX) convo = convo.slice(-CONVO_MAX); saveConvo(); renderConvo(); }
@@ -125,7 +132,7 @@
   });
   handlers.live = p => {
     if (!p) return;
-    if (!p.on) stopThinking();
+    // Turning Live off does not stop the AI: its answer still goes into the conversation log (it is not spoken).
     setLive(!!p.on, p.state, p.message);
   };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
@@ -162,21 +169,23 @@
   $("modeEcho").addEventListener("click", () => setLiveMode("echo"));
 
   const LIVE_TIMEOUT_MS = 5 * 60 * 1000;
-  let liveJob = null; // { id, at, timer, tick }
   function thinkingText() {
     const sec = liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0;
     const pv = settings().provider;
     const slow = pv === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : pv === "githubmd" ? " รอ AI ภายนอกตอบในไฟล์ MD (10 วินาที–1 นาทีขึ้นไป)" : "";
     return `กำลังคิด… ${sec} วินาที${slow}`;
   }
+  const abandonedLive = new Set(); // answers that arrive after the 5-minute timeout are not shown twice
   function stopThinking() {
     if (!liveJob) return;
     clearTimeout(liveJob.timer); clearInterval(liveJob.tick); liveJob = null;
+    renderConvo();
   }
+  const liveOn = () => $("liveSwitch").getAttribute("aria-checked") === "true";
   /** Says something to the person and writes it in the log. Live listens again afterwards. */
   function liveReply(text, kind = "app") {
     addConvo(kind, text);
-    if (A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
+    if (liveOn() && A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
   }
   // A function, because CHAT_SCHEMA is defined further down the file.
   const liveSchema = () => ({
@@ -214,18 +223,24 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
     catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return; }
     liveJob = { id: job.id, at: Date.now() };
-    liveJob.tick = setInterval(() => { if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText(); }, 1000);
+    liveJob.tick = setInterval(() => {
+      if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText();
+      const t = $("convoThinkingText"); if (t) t.textContent = thinkingText();
+    }, 1000);
     liveJob.timer = setTimeout(() => {
       if (!liveJob || liveJob.id !== job.id) return;
+      abandonedLive.add(job.id);
       stopThinking(); clearPending("live", "live");
       liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
     }, settings().provider === "githubmd" ? LIVE_TIMEOUT_MS + 90 * 1000 : LIVE_TIMEOUT_MS); // the file channel waits 5 min itself
     $("liveStatus").textContent = thinkingText();
+    renderConvo();
     await startJob(job);
   }
   function applyLiveResult(res) {
-    if (!liveJob || res.id !== liveJob.id) return; // an old answer after timeout or after Live was turned off
-    stopThinking();
+    if (abandonedLive.has(res.id)) return; // already reported as "no answer in 5 minutes"
+    if (liveJob && res.id === liveJob.id) stopThinking();
+    // Otherwise it belongs to an earlier question (for example from before the app was reopened): still log it.
     if (!res.ok) {
       liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
       return;
