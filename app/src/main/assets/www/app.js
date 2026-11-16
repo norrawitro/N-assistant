@@ -16,11 +16,12 @@
   // ---------- storage (on this phone) ----------
   const LS_DOCS = "nassistant.docs";
   const LS_KEY = "nassistant.apikey";
+  const LS_OTHER_KEY = "nassistant.apikey.other"; // key for the "other provider" option; stays on this phone
   const LS_PENDING = "nassistant.pending";
   let docs = lsGet(LS_DOCS) || {}; // "settings", "reminders", "day-YYYY-MM-DD"
   function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); schedulePrepSync(); }
 
-  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5" };
+  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5", otherUrl: "", otherModel: "" };
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(docs.settings || {}) });
   const dayKey = date => "day-" + date;
   const todayDate = () => keyOf(new Date());
@@ -139,7 +140,12 @@
         : "เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (ไม่ใช้ AI)";
     }
   }
-  const aiName = () => settings().provider === "claude" ? "Claude" : "AI ในเครื่อง";
+  const aiName = () => {
+    const s = settings();
+    if (s.provider === "claude") return "Claude";
+    if (s.provider === "openai") { const o = [...$("sOtherPreset").options].find(x => x.value && x.value === String(s.otherUrl || "").replace(/\/+$/, "")); return (o ? o.textContent : "ผู้ให้บริการอื่น") + (s.otherModel ? " " + s.otherModel : ""); }
+    return "AI ในเครื่อง";
+  };
   $("modeAi").addEventListener("click", () => setLiveMode("ai"));
   $("modeEcho").addEventListener("click", () => setLiveMode("echo"));
 
@@ -147,7 +153,7 @@
   let liveJob = null; // { id, at, timer, tick }
   function thinkingText() {
     const sec = liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0;
-    const slow = settings().provider !== "claude" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : "";
+    const slow = settings().provider === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : "";
     return `กำลังคิด… ${sec} วินาที${slow}`;
   }
   function stopThinking() {
@@ -199,7 +205,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     liveJob.timer = setTimeout(() => {
       if (!liveJob || liveJob.id !== job.id) return;
       stopThinking(); clearPending("live", "live");
-      liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider !== "claude" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
+      liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
     }, LIVE_TIMEOUT_MS);
     $("liveStatus").textContent = thinkingText();
     await startJob(job);
@@ -208,8 +214,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     if (!liveJob || res.id !== liveJob.id) return; // an old answer after timeout or after Live was turned off
     stopThinking();
     if (!res.ok) {
-      const local = settings().provider !== "claude";
-      liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}${local ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""}`.trim(), "note");
+      liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
       return;
     }
     let reply = cleanText(res.text), adds = [], open = "";
@@ -333,6 +338,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     }
   };
   function apiKey() { try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } }
+  function otherKey() { try { return localStorage.getItem(LS_OTHER_KEY) || ""; } catch { return ""; } }
 
   /** Builds the request the native service sends. Throws with a message the person can act on. */
   function buildJob(kind, date, prompt, { schema = null, effort = "medium" } = {}) {
@@ -347,6 +353,15 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
       // If a safety check declines the request, let the API retry on its recommended fallback model.
       if (s.model !== "claude-haiku-5-5") { body.fallbacks = "default"; headers["anthropic-beta"] = "server-side-fallback-2026-07-01"; }
       Object.assign(job, { format: "claude", url: "https://api.anthropic.com/v1/messages", headers, body });
+    } else if (s.provider === "openai") {
+      // Any provider with an OpenAI-compatible API. JSON is asked for in the prompt, which every provider supports.
+      const base = String(s.otherUrl || "").trim().replace(/\/+$/, "");
+      const key = otherKey(), model = String(s.otherModel || "").trim();
+      if (!/^https:\/\//.test(base)) throw new Error("ยังไม่ได้ใส่ที่อยู่ API ที่ขึ้นต้นด้วย https ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!key) throw new Error("ยังไม่ได้ใส่ API key ของผู้ให้บริการ ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!model) throw new Error("ยังไม่ได้ใส่ชื่อโมเดล ไปที่ \"ตั้งค่า\" ก่อน");
+      const body = { model, messages: [{ role: "user", content: prompt }], temperature: 0.4 };
+      Object.assign(job, { format: "openai", url: base + "/chat/completions", headers: { Authorization: "Bearer " + key }, body });
     } else {
       const base = (s.localUrl || DEFAULT_SETTINGS.localUrl).replace(/\/+$/, "");
       const body = { model: s.localModel || DEFAULT_SETTINGS.localModel, messages: [{ role: "user", content: prompt }], stream: false, think: false, options: { temperature: 0.4 } };
@@ -733,9 +748,12 @@ ${contextText(date)}
       wake: $("sWake").value || "06:30", wakeOn: $("sWakeOn").checked,
       evening: $("sEve").value || "19:30", eveningOn: $("sEveOn").checked, prepMinutes: +$("sPrep").value || 0,
       name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value,
+      otherUrl: $("sOtherUrl").value.trim(), otherModel: $("sOtherModel").value.trim(),
       provider: $("sProvider").value, localUrl: $("sLocalUrl").value.trim() || DEFAULT_SETTINGS.localUrl, localModel: $("sLocalModel").value || DEFAULT_SETTINGS.localModel, updatedAt: Date.now()
     });
     try { const k = $("sKey").value.trim(); if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY); } catch {}
+    try { const k = $("sOtherKey").value.trim(); if (k) localStorage.setItem(LS_OTHER_KEY, k); else localStorage.removeItem(LS_OTHER_KEY); } catch {}
+    if ($("liveSwitch").getAttribute("aria-checked") !== "true") setLiveMode(liveMode); // refresh the AI name on the Live screen
     pushAlarms();
     $("sStatus").textContent = "บันทึกการตั้งค่าแล้ว";
     setTimeout(checkPermissions, 800);
@@ -783,7 +801,43 @@ ${contextText(date)}
   });
 
   // ---------- provider settings ----------
-  function showProviderBox() { const c = $("sProvider").value === "claude"; $("claudeBox").hidden = !c; $("localBox").hidden = c; }
+  function showProviderBox() {
+    const p = $("sProvider").value;
+    $("claudeBox").hidden = p !== "claude"; $("localBox").hidden = p !== "local"; $("otherBox").hidden = p !== "openai";
+    if (p === "local") renderTermux();
+  }
+  $("sOtherPreset").addEventListener("change", () => { const v = $("sOtherPreset").value; if (v) $("sOtherUrl").value = v; $("sOtherUrl").focus(); });
+
+  // ---------- Termux: let the app start "ollama serve" by itself ----------
+  function termuxInfo() { try { return A && A.termuxStatus ? JSON.parse(A.termuxStatus()) : null; } catch { return null; } }
+  function renderTermux() {
+    const t = termuxInfo();
+    if (!t) { $("termuxState").textContent = "ใช้ได้เฉพาะในแอปบนมือถือ"; return; }
+    $("tsInstall").classList.toggle("done", t.installed); $("tsPerm").classList.toggle("done", t.permitted);
+    $("termuxPerm").hidden = t.permitted || !t.installed;
+    $("termuxState").textContent = !t.installed ? "ยังไม่พบแอป Termux ในเครื่อง ทำตามขั้นตอนด้านล่าง"
+      : !t.permitted ? "พบ Termux แล้ว แต่แอปนี้ยังไม่ได้รับสิทธิ์สั่งงาน Termux"
+      : "พร้อมแล้ว แอปจะเปิด Ollama ใน Termux ให้เองเมื่อต้องใช้";
+  }
+  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
+  $("termuxPerm").addEventListener("click", () => A && A.askTermuxPermission());
+  $("termuxOpen").addEventListener("click", () => A && A.openTermux());
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  $("termuxStart").addEventListener("click", async () => {
+    if (!A || !A.termuxStart) return;
+    const btn = $("termuxStart"); btn.disabled = true;
+    try {
+      try { await localGet("/api/tags"); $("termuxStatus").textContent = "Ollama ทำงานอยู่แล้ว เชื่อมต่อได้"; return; } catch {}
+      const r = A.termuxStart();
+      if (r !== "started") { $("termuxStatus").textContent = r === "no_termux" ? "ไม่พบแอป Termux" : r === "no_permission" ? "ยังไม่ได้รับสิทธิ์สั่ง Termux กด \"ขอสิทธิ์สั่ง Termux\" ก่อน" : "สั่ง Termux ไม่สำเร็จ: " + r; renderTermux(); return; }
+      for (let i = 0; i < 15; i++) {
+        $("termuxStatus").textContent = `สั่ง Termux แล้ว กำลังรอ Ollama… ${i * 2} วินาที`;
+        await sleep(2000);
+        try { await localGet("/api/tags"); $("termuxStatus").textContent = "เปิด Ollama สำเร็จ เชื่อมต่อได้แล้ว"; return; } catch {}
+      }
+      $("termuxStatus").textContent = "สั่งแล้วแต่ Ollama ยังไม่ตอบ ตรวจขั้นตอนที่ 2 และ 3 (ติดตั้ง Ollama และ allow-external-apps)";
+    } finally { btn.disabled = false; }
+  });
   function ensureModelOption(name) {
     if (!name) return;
     const sel = $("sLocalModel");
@@ -861,6 +915,8 @@ ${contextText(date)}
     ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
+    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey());
+    { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);
     set("eNotes", t.evening.notes); set("eWins", t.evening.wins); set("eTomorrow", t.evening.tomorrow); setScale($("eMood"), t.evening.mood);
     if (t.evening.reflection) { $("reflection").hidden = false; $("reflection").innerHTML = `<h3>สรุปจาก AI</h3><p>${esc(t.evening.reflection)}</p>`; }

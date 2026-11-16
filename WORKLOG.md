@@ -72,3 +72,41 @@ Request: owner order relayed by Manager on 2026-11-16, after the owner tested v1
   - No errors and no sideways scrolling.
 - Java compiles in CI.
 - Not tested: a real AI answer from Ollama or Claude on the phone.
+
+## 2026-11-16 (later): any AI provider, and Termux started by the app
+
+Request: relayed by Manager. The owner approved adding all the options discussed:
+- the app starts Ollama in Termux by itself, and explains the one-time setup in simple Thai;
+- Settings can use any common AI provider (provider, Base URL, API key, model), with Claude and Ollama still working;
+- the AI-on-this-phone option stays.
+
+### What was built
+- **Provider "ผู้ให้บริการอื่น"** (OpenAI-compatible `/chat/completions`):
+  - **Presets** that fill the Base URL: OpenAI, Google Gemini, Groq, OpenRouter, DeepSeek, Mistral, Together AI, or a custom address.
+  - **Fields:** Base URL, API key and model. The key is stored in localStorage on the phone only, under its own name, and is not in the exported settings.
+  - **AiService** accepts this format over https only, and reads `choices[0].message.content`.
+  - **JSON answers** are asked for in the prompt instead of `response_format`, because not every provider supports `response_format`.
+  - Claude and Ollama are unchanged.
+- **Termux starts Ollama by itself** (`TermuxOllama`, Termux `RUN_COMMAND`):
+  - It runs `bash -c "termux-wake-lock; pgrep -x ollama || nohup ollama serve &"` in the background.
+  - **When it runs:** when a local AI job cannot connect, `AiService` asks Termux to start Ollama, waits up to 30 s, and sends the request again. This covers Live, chat, the morning plan and the plan prepared before waking.
+  - **When it cannot:** if Termux is missing, the permission is missing, or Ollama never comes up, the error says which and points to the steps.
+- **Settings → AI ในเครื่อง → "ให้แอปเปิด Ollama ใน Termux ให้เอง":**
+  - A status line, plus 5 steps in Thai. Steps already done turn green.
+  - Buttons: "ขอสิทธิ์สั่ง Termux", "เปิดแอป Termux" and "เปิด Ollama ตอนนี้". The last one tests and waits up to 30 s.
+  - Manifest: `com.termux.permission.RUN_COMMAND`, and a `<queries>` entry for the `com.termux` package.
+- **Live screen:** it names the AI in use, for example "Groq llama-3.3-70b-versatile". The "1–3 นาที" hint now shows for local AI only.
+
+### Checks
+- Browser test with a mock bridge:
+  - the Termux status before and after permission;
+  - "เปิด Ollama ตอนนี้" waiting until Ollama answers;
+  - the provider switch and its boxes, and the Groq preset filling the URL;
+  - a Live job sent as format openai to `.../chat/completions` with a Bearer key;
+  - the key absent from saved settings;
+  - a missing URL spoken clearly.
+  - No errors and no sideways scrolling. The earlier Live tests pass.
+- Java compiles in CI.
+- Not tested on a phone:
+  - Termux RUN_COMMAND starting Ollama;
+  - a real answer from any provider.
