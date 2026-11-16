@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     private static final int REQ_SAVE = 7001;
     private static final int REQ_NOTIF = 7002;
     private static final int REQ_MIC = 7003;
+    private static final int REQ_TERMUX = 7004;
     private static final String START_URL = "https://appassets.androidplatform.net/assets/www/index.html";
 
     private WebView web;
@@ -43,6 +44,7 @@ public class MainActivity extends Activity {
     private boolean pageReady;
     private String pendingTab;
     private LiveVoice live;
+    private boolean liveEcho = true;
     /** The activity while it is on screen, so background AI results can go straight to the page. */
     private static volatile MainActivity visible;
 
@@ -155,6 +157,10 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_TERMUX) {
+            emit("termuxPerm", String.valueOf(TermuxOllama.permitted(this)));
+            return;
+        }
         if (requestCode != REQ_MIC) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startLive();
         else emitLive("error", "ต้องอนุญาตไมโครโฟนก่อนจึงจะใช้ Live ได้", false);
@@ -169,6 +175,7 @@ public class MainActivity extends Activity {
                 @Override public void partial(String text) { emit("livePartial", JSONObject.quote(text)); }
             });
         }
+        live.setEcho(liveEcho);
         live.start();
     }
 
@@ -342,6 +349,51 @@ public class MainActivity extends Activity {
                 } else {
                     startLive();
                 }
+            });
+        }
+
+        /** "ai": the page answers through liveSay(); "echo": say back what was heard. */
+        @JavascriptInterface
+        public void liveMode(String mode) {
+            main.post(() -> {
+                boolean echo = !"ai".equals(mode);
+                liveEcho = echo;
+                if (live != null) live.setEcho(echo);
+            });
+        }
+
+        /** Speaks the AI's answer (or a message about what went wrong), then Live listens again. */
+        @JavascriptInterface
+        public void liveSay(String text) {
+            main.post(() -> { if (live != null) live.answer(text); });
+        }
+
+        /** {installed, permitted} for the Termux setup steps. */
+        @JavascriptInterface
+        public String termuxStatus() {
+            return "{\"installed\":" + TermuxOllama.installed(MainActivity.this)
+                    + ",\"permitted\":" + TermuxOllama.permitted(MainActivity.this) + "}";
+        }
+
+        /** Asks Termux to start "ollama serve". Returns started, no_termux, no_permission or error: ... */
+        @JavascriptInterface
+        public String termuxStart() {
+            return TermuxOllama.start(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void askTermuxPermission() {
+            main.post(() -> {
+                if (TermuxOllama.permitted(MainActivity.this)) emit("termuxPerm", "true");
+                else requestPermissions(new String[]{TermuxOllama.PERMISSION}, REQ_TERMUX);
+            });
+        }
+
+        @JavascriptInterface
+        public void openTermux() {
+            main.post(() -> {
+                Intent i = getPackageManager().getLaunchIntentForPackage(TermuxOllama.PKG);
+                if (i != null) startActivity(i);
             });
         }
 

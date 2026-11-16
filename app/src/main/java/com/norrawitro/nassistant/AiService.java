@@ -107,7 +107,7 @@ public class AiService extends Service {
         worker.execute(() -> {
             JSONObject res;
             try {
-                res = run(new JSONObject(jobJson));
+                res = run(this, new JSONObject(jobJson));
             } catch (Exception e) {
                 res = new JSONObject();
                 try { res.put("ok", false); res.put("error", "งานไม่ถูกต้อง: " + e.getMessage()); } catch (Exception ignored) {}
@@ -150,12 +150,19 @@ public class AiService extends Service {
     }
 
     static JSONObject run(JSONObject job) throws Exception {
+        return run(null, job);
+    }
+
+    /** With a context, a local job whose Ollama is not running first asks Termux to start it, then tries once more. */
+    static JSONObject run(Context ctx, JSONObject job) throws Exception {
         String url = job.optString("url");
         String format = job.optString("format", "ollama");
         Uri u = Uri.parse(url);
         boolean local = "http".equals(u.getScheme()) && ("127.0.0.1".equals(u.getHost()) || "localhost".equals(u.getHost()));
         boolean claude = "https".equals(u.getScheme()) && "api.anthropic.com".equals(u.getHost());
-        if (!local && !claude) return failure(job, "ที่อยู่ AI นี้ไม่ได้รับอนุญาต");
+        // Any provider with an OpenAI-compatible API (chosen by the person in Settings), over HTTPS only.
+        boolean other = "openai".equals(format) && "https".equals(u.getScheme()) && u.getHost() != null && !u.getHost().isEmpty();
+        if (!local && !claude && !other) return failure(job, "ที่อยู่ AI นี้ไม่ได้รับอนุญาต (ต้องขึ้นต้นด้วย https://)");
 
         JSONObject body = job.optJSONObject("body");
         if (body == null) return failure(job, "ไม่มีข้อความที่จะส่งให้ AI");
@@ -170,9 +177,17 @@ public class AiService extends Service {
                 resp = post(url, headers, body);
             }
         } catch (ConnectException e) {
-            return failure(job, local
-                    ? "ติดต่อ Ollama ไม่ได้ เปิด Termux แล้วรัน: ollama serve"
-                    : "เชื่อมต่ออินเทอร์เน็ตไม่ได้");
+            if (!local) return failure(job, "เชื่อมต่ออินเทอร์เน็ตไม่ได้");
+            String started = ctx == null ? "no_context" : TermuxOllama.start(ctx);
+            if (!"started".equals(started)) return failure(job, termuxFailure(started));
+            // Give "ollama serve" up to 30 seconds to come up, then send the request again.
+            resp = null;
+            for (int i = 0; i < 15 && resp == null; i++) {
+                Thread.sleep(2000);
+                try { resp = post(url, headers, body); } catch (ConnectException again) { /* not up yet */ }
+                catch (SocketTimeoutException slow) { return failure(job, "AI ใช้เวลานานเกินไป ลองใหม่อีกครั้ง หรือเลือกโมเดลที่เล็กลง"); }
+            }
+            if (resp == null) return failure(job, "สั่ง Termux เปิด Ollama แล้วแต่ยังติดต่อไม่ได้ ตรวจว่าตั้ง allow-external-apps=true ใน Termux แล้ว และติดตั้ง Ollama ไว้แล้ว (ดูขั้นตอนในตั้งค่า)");
         } catch (SocketTimeoutException e) {
             return failure(job, "AI ใช้เวลานานเกินไป ลองใหม่อีกครั้ง หรือเลือกโมเดลที่เล็กลง");
         }
@@ -184,7 +199,8 @@ public class AiService extends Service {
             String apiMsg = data.optJSONObject("error") != null
                     ? data.optJSONObject("error").optString("message") : data.optString("error");
             String msg;
-            if (status == 404 && "ollama".equals(format)) msg = "ไม่พบโมเดลนี้ใน Ollama เลือกโมเดลใหม่ในแท็บ \"ตั้งค่า\"";
+            if (status == 404 && "openai".equals(format)) msg = "ไม่พบที่อยู่ API หรือโมเดลนี้ ตรวจ Base URL และชื่อโมเดลในแท็บ \"ตั้งค่า\"";
+            else if (status == 404 && "ollama".equals(format)) msg = "ไม่พบโมเดลนี้ใน Ollama เลือกโมเดลใหม่ในแท็บ \"ตั้งค่า\"";
             else if (status == 401) msg = "API key ไม่ถูกต้อง ตรวจสอบในแท็บ \"ตั้งค่า\"";
             else if (status == 429) msg = "ใช้งานถี่เกินไป หรือเครดิตในบัญชี API หมด รอสักครู่แล้วลองใหม่";
             else if (status >= 500) msg = "ระบบ AI ยุ่งอยู่ ลองใหม่อีกครั้งในอีกสักครู่";
@@ -204,6 +220,11 @@ public class AiService extends Service {
                 }
             }
             text = sb.toString();
+        } else if ("openai".equals(format)) {
+            JSONArray choices = data.optJSONArray("choices");
+            JSONObject first = choices == null ? null : choices.optJSONObject(0);
+            JSONObject msg = first == null ? null : first.optJSONObject("message");
+            text = msg == null || msg.isNull("content") ? "" : msg.optString("content");
         } else {
             JSONObject msg = data.optJSONObject("message");
             text = msg == null ? "" : msg.optString("content");
@@ -213,6 +234,12 @@ public class AiService extends Service {
         r.put("ok", true);
         r.put("text", text);
         return r;
+    }
+
+    static String termuxFailure(String status) {
+        if ("no_termux".equals(status)) return "ติดต่อ Ollama ไม่ได้ และไม่พบแอป Termux ในเครื่อง ดูขั้นตอนติดตั้งในตั้งค่า";
+        if ("no_permission".equals(status)) return "ติดต่อ Ollama ไม่ได้ และแอปยังไม่ได้รับสิทธิ์สั่งงาน Termux ไปที่ตั้งค่า แล้วกด \"ขอสิทธิ์สั่ง Termux\"";
+        return "ติดต่อ Ollama ไม่ได้ เปิด Termux แล้วรัน: ollama serve";
     }
 
     private static String[] post(String url, JSONObject headers, JSONObject body) throws Exception {
@@ -297,7 +324,8 @@ public class AiService extends Service {
         boolean ok = res.optBoolean("ok");
         String kind = res.optString("kind");
         boolean evening = "reflection".equals(kind);
-        boolean chat = "chat".equals(kind);
+        boolean live = "live".equals(kind);
+        boolean chat = "chat".equals(kind) || live;
         String title = ok
                 ? (chat ? "ผู้ช่วยตอบแล้ว" : evening ? "สรุปวันนี้พร้อมแล้ว" : (res.optBoolean("prepared") ? "เตรียมแผนวันนี้ไว้ให้แล้ว" : "แผนวันนี้พร้อมแล้ว"))
                 : "AI ทำงานไม่สำเร็จ";
@@ -308,7 +336,7 @@ public class AiService extends Service {
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setAutoCancel(true)
-                .setContentIntent(openApp(this, chat ? "chat" : evening ? "evening" : "morning"))
+                .setContentIntent(openApp(this, live ? "live" : chat ? "chat" : evening ? "evening" : "morning"))
                 .build();
         try {
             getSystemService(NotificationManager.class).notify(NOTIF_DONE, n);

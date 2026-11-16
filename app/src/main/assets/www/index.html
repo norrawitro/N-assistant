@@ -69,6 +69,16 @@ p{margin:0}
 @keyframes pulse{50%{box-shadow:0 0 0 18px var(--accent-soft)}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="listening"]{animation:none}}
 .live-status{min-height:1.6em;text-align:center}
+.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
+.steps li.done{color:var(--ok)}
+.steps code,.small code{overflow-wrap:anywhere}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--muted);font:600 .86rem var(--f-display);padding:7px 14px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.live-switch[data-state="thinking"]{animation:think 1.2s ease-in-out infinite}
+@keyframes think{50%{opacity:.75}}
+@media (prefers-reduced-motion: reduce){.live-switch[data-state="thinking"]{animation:none}}
+.convo li.note{align-self:center;background:transparent;color:var(--warn);font-size:.86rem;text-align:center}
 .live-partial{min-height:1.5em;text-align:center;color:var(--muted);font-size:.95rem}
 .convo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;overscroll-behavior:contain}
 .convo li{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;max-width:88%;overflow-wrap:anywhere}
@@ -204,7 +214,11 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <button class="live-switch" id="liveSwitch" type="button" role="switch" aria-checked="false" data-state="off">
         <span>LIVE<span class="sw-sub" id="liveSub">แตะเพื่อเปิด</span></span>
       </button>
-      <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (รอบทดสอบ ยังไม่ใช้ AI)</p>
+      <div class="seg" role="group" aria-label="วิธีตอบ">
+        <button type="button" id="modeAi" aria-pressed="true">ตอบด้วย AI</button>
+        <button type="button" id="modeEcho" aria-pressed="false">พูดซ้ำ (ทดสอบ)</button>
+      </div>
+      <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย</p>
       <p class="live-partial" id="livePartial" aria-live="polite"></p>
     </div>
     <div class="card">
@@ -396,6 +410,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <select id="sProvider">
           <option value="local">AI ในเครื่องนี้ (Ollama ใน Termux) ฟรี</option>
           <option value="claude">Claude API (ต้องเติมเงิน API)</option>
+          <option value="openai">ผู้ให้บริการอื่น (OpenAI, Gemini, Groq, OpenRouter, DeepSeek ฯลฯ)</option>
         </select>
       </div>
       <div class="sec" id="localBox">
@@ -411,6 +426,53 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <div class="row"><button class="btn" id="testLocal" type="button">ทดสอบการเชื่อมต่อ</button></div>
         <p class="status" id="localStatus"></p>
         <p class="small muted">ก่อนใช้ ให้เปิด Termux แล้วรัน <code>termux-wake-lock; ollama serve</code> ค้างไว้ โมเดลในมือถืออาจใช้เวลาตอบ 1-3 นาที</p>
+        <div class="sec" id="termuxBox">
+          <h3>ให้แอปเปิด Ollama ใน Termux ให้เอง</h3>
+          <p class="small" id="termuxState">-</p>
+          <ol class="small steps" id="termuxSteps">
+            <li id="tsInstall">ติดตั้ง Termux จาก F-Droid หรือ GitHub (ตัวใน Play Store เก่า ใช้ไม่ได้)</li>
+            <li>เปิด Termux แล้วพิมพ์ทีละบรรทัด:<br><code>pkg install ollama</code><br><code>ollama pull qwen3.5:4b</code></li>
+            <li>ใน Termux พิมพ์ต่อ (อนุญาตให้แอปอื่นสั่งงาน):<br><code>mkdir -p ~/.termux; echo "allow-external-apps=true" &gt;&gt; ~/.termux/termux.properties; termux-reload-settings</code></li>
+            <li id="tsPerm">กลับมาที่แอปนี้ แล้วกด "ขอสิทธิ์สั่ง Termux" ด้านล่าง แล้วเลือกอนุญาต</li>
+            <li>กด "เปิด Ollama ตอนนี้" เพื่อทดสอบ ถ้าขึ้นว่าเชื่อมต่อได้ แปลว่าครบแล้ว ต่อไปแอปจะเปิด Ollama ให้เองทุกครั้งที่ต้องใช้</li>
+          </ol>
+          <div class="row">
+            <button class="btn" id="termuxPerm" type="button">ขอสิทธิ์สั่ง Termux</button>
+            <button class="btn" id="termuxOpen" type="button">เปิดแอป Termux</button>
+            <button class="btn primary" id="termuxStart" type="button">เปิด Ollama ตอนนี้</button>
+          </div>
+          <p class="status" id="termuxStatus"></p>
+        </div>
+      </div>
+      <div class="sec" id="otherBox" hidden>
+        <div class="field">
+          <label for="sOtherPreset">ผู้ให้บริการ</label>
+          <select id="sOtherPreset">
+            <option value="https://api.openai.com/v1">OpenAI</option>
+            <option value="https://generativelanguage.googleapis.com/v1beta/openai">Google Gemini</option>
+            <option value="https://api.groq.com/openai/v1">Groq</option>
+            <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+            <option value="https://api.deepseek.com/v1">DeepSeek</option>
+            <option value="https://api.mistral.ai/v1">Mistral</option>
+            <option value="https://api.together.xyz/v1">Together AI</option>
+            <option value="">กำหนดเอง</option>
+          </select>
+          <span class="hint">ใช้ได้กับทุกเจ้าที่มี API แบบเดียวกับ OpenAI (/chat/completions)</span>
+        </div>
+        <div class="field">
+          <label for="sOtherUrl">ที่อยู่ API (Base URL)</label>
+          <input type="text" id="sOtherUrl" placeholder="https://api.openai.com/v1" autocomplete="off" inputmode="url" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="sOtherKey">API key</label>
+          <input type="password" id="sOtherKey" autocomplete="off" spellcheck="false">
+          <span class="hint">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกรวมในไฟล์ส่งออก</span>
+        </div>
+        <div class="field">
+          <label for="sOtherModel">โมเดล</label>
+          <input type="text" id="sOtherModel" placeholder="เช่น gpt-4o-mini, gemini-2.0-flash, llama-3.3-70b-versatile" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <span class="hint">พิมพ์ชื่อโมเดลตามที่ผู้ให้บริการกำหนด</span>
+        </div>
       </div>
       <div class="sec" id="claudeBox" hidden>
         <div class="field">

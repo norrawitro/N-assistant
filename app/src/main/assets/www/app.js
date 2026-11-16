@@ -16,11 +16,12 @@
   // ---------- storage (on this phone) ----------
   const LS_DOCS = "nassistant.docs";
   const LS_KEY = "nassistant.apikey";
+  const LS_OTHER_KEY = "nassistant.apikey.other"; // key for the "other provider" option; stays on this phone
   const LS_PENDING = "nassistant.pending";
   let docs = lsGet(LS_DOCS) || {}; // "settings", "reminders", "day-YYYY-MM-DD"
   function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); schedulePrepSync(); }
 
-  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5" };
+  const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5", otherUrl: "", otherModel: "" };
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(docs.settings || {}) });
   const dayKey = date => "day-" + date;
   const todayDate = () => keyOf(new Date());
@@ -87,8 +88,8 @@
     const ol = $("convo"); ol.textContent = "";
     if (!convo.length) { const li = document.createElement("li"); li.className = "convo-empty"; li.textContent = "ยังไม่มีบทสนทนา"; ol.appendChild(li); return; }
     convo.forEach(m => {
-      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : "app";
-      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : "ตอบ"} · ${convoTime(m.t)}`;
+      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : m.who === "note" ? "note" : "app";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : m.who === "note" ? "แจ้ง" : "ตอบ"} · ${convoTime(m.t)}`;
       const p = document.createElement("span"); p.textContent = m.text;
       li.append(w, p); ol.appendChild(li);
     });
@@ -100,7 +101,8 @@
   function setLive(on, state, message) {
     const sw = $("liveSwitch");
     sw.setAttribute("aria-checked", String(on)); sw.dataset.state = on ? state : "off";
-    $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : "กำลังฟัง";
+    $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : state === "thinking" ? "กำลังคิด" : "กำลังฟัง";
+    if (on && state === "thinking") message = thinkingText();
     if (message) $("liveStatus").textContent = message;
     else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
     if (!on || state !== "listening") $("livePartial").textContent = "";
@@ -110,9 +112,134 @@
     if ($("liveSwitch").getAttribute("aria-checked") === "true") { A.liveStop(); setLive(false, "off", "ปิด Live แล้ว"); }
     else { setLive(true, "listening", "กำลังเปิดไมโครโฟน…"); A.liveStart(); }
   });
-  handlers.live = p => { if (p) setLive(!!p.on, p.state, p.message); };
+  handlers.live = p => {
+    if (!p) return;
+    if (!p.on) stopThinking();
+    setLive(!!p.on, p.state, p.message);
+  };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
-  handlers.liveHeard = t => { $("livePartial").textContent = ""; addConvo("me", t); };
+  handlers.liveHeard = t => {
+    $("livePartial").textContent = "";
+    addConvo("me", t);
+    if (liveMode === "ai") askLiveAI(t);
+  };
+
+  // ---------- Live, round 2: the AI decides how to react ----------
+  const LIVE_MODE_KEY = "nLiveMode";
+  let liveMode = "ai";
+  try { liveMode = localStorage.getItem(LIVE_MODE_KEY) === "echo" ? "echo" : "ai"; } catch {}
+  function setLiveMode(m) {
+    liveMode = m === "echo" ? "echo" : "ai";
+    try { localStorage.setItem(LIVE_MODE_KEY, liveMode); } catch {}
+    $("modeAi").setAttribute("aria-pressed", String(liveMode === "ai"));
+    $("modeEcho").setAttribute("aria-pressed", String(liveMode === "echo"));
+    if (A && A.liveMode) A.liveMode(liveMode);
+    if ($("liveSwitch").getAttribute("aria-checked") !== "true") {
+      $("liveStatus").textContent = liveMode === "ai"
+        ? `เปิด Live แล้วพูดภาษาไทย AI (${aiName()}) จะคิดว่าจะตอบหรือทำอะไรให้`
+        : "เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (ไม่ใช้ AI)";
+    }
+  }
+  const aiName = () => {
+    const s = settings();
+    if (s.provider === "claude") return "Claude";
+    if (s.provider === "openai") { const o = [...$("sOtherPreset").options].find(x => x.value && x.value === String(s.otherUrl || "").replace(/\/+$/, "")); return (o ? o.textContent : "ผู้ให้บริการอื่น") + (s.otherModel ? " " + s.otherModel : ""); }
+    return "AI ในเครื่อง";
+  };
+  $("modeAi").addEventListener("click", () => setLiveMode("ai"));
+  $("modeEcho").addEventListener("click", () => setLiveMode("echo"));
+
+  const LIVE_TIMEOUT_MS = 5 * 60 * 1000;
+  let liveJob = null; // { id, at, timer, tick }
+  function thinkingText() {
+    const sec = liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0;
+    const slow = settings().provider === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : "";
+    return `กำลังคิด… ${sec} วินาที${slow}`;
+  }
+  function stopThinking() {
+    if (!liveJob) return;
+    clearTimeout(liveJob.timer); clearInterval(liveJob.tick); liveJob = null;
+  }
+  /** Says something to the person and writes it in the log. Live listens again afterwards. */
+  function liveReply(text, kind = "app") {
+    addConvo(kind, text);
+    if (A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
+  }
+  // A function, because CHAT_SCHEMA is defined further down the file.
+  const liveSchema = () => ({
+    type: "object", additionalProperties: false, required: ["reply", "reminders", "open"],
+    properties: {
+      reply: { type: "string" },
+      reminders: CHAT_SCHEMA.properties.reminders,
+      open: { type: "string", enum: ["", "morning", "evening", "chat", "remind", "history", "settings"] }
+    }
+  });
+  function livePrompt(text) {
+    const now = new Date();
+    const history = convo.filter(m => m.who !== "note").slice(-9, -1).map(m => `${m.who === "me" ? "ผู้ใช้" : "ผู้ช่วย"}: ${m.text}`).join("\n");
+    const rems = reminders().filter(r => r.on !== false && nextAt(r)).slice(0, 15).map(r => `${reminderWhen(r)} ${r.text}`).join("; ");
+    const b = today().morning.brief;
+    return `คุณคือ N-assistant ผู้ช่วยส่วนตัวที่คุยกับผู้ใช้ด้วยเสียง ข้อความของผู้ใช้มาจากการแปลงเสียงเป็นข้อความ อาจสะกดผิดหรือขาดคำ ให้เดาความหมายที่ใกล้ที่สุด
+ตอนนี้: ${thDate(now)} เวลา ${hhmm(now)} (วันที่ ${todayDate()})
+${contextText(todayDate())}
+แผนวันนี้: ${b ? `เป้าหลัก ${b.focus}; งาน ${(b.priorities || []).join("; ")}` : "(ยังไม่ได้ทำ)"}
+การเตือนที่ตั้งไว้: ${rems || "(ไม่มี)"}
+
+บทสนทนาก่อนหน้า:
+${history || "(เริ่มบทสนทนาใหม่)"}
+
+ผู้ใช้พูดว่า: ${text}
+
+ตัดสินใจว่าจะตอบสนองอย่างไร แล้วตอบเป็น JSON เท่านั้น:
+- reply = สิ่งที่จะพูดออกเสียงให้ผู้ใช้ฟัง ภาษาไทย สั้น 1-3 ประโยค เป็นภาษาพูด ห้ามมี markdown, emoji, รายการหัวข้อ หรือสัญลักษณ์
+- reminders = การเตือนที่ต้องตั้งใหม่ (เฉพาะเมื่อผู้ใช้ขอให้เตือน ไม่อย่างนั้นให้เป็น []) แต่ละรายการมี text, time ("HH:MM" 24 ชั่วโมง), date ("YYYY-MM-DD" คำนวณจากวันที่ตอนนี้), repeat ("once" | "daily" | "weekdays" | "weekly") ถ้าตั้งเตือนให้บอกวันเวลาที่ตั้งใน reply
+- open = หน้าที่จะเปิดให้ผู้ใช้ เฉพาะเมื่อผู้ใช้ขอให้เปิด: "morning" (แผนตอนเช้า), "evening" (บันทึกตอนเย็น), "chat" (แชทผู้ช่วย), "remind" (รายการเตือน), "history" (ประวัติ), "settings" (ตั้งค่า) ไม่อย่างนั้นให้เป็น ""`;
+  }
+  async function askLiveAI(text) {
+    stopThinking();
+    let job;
+    try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low" }); }
+    catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return; }
+    liveJob = { id: job.id, at: Date.now() };
+    liveJob.tick = setInterval(() => { if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText(); }, 1000);
+    liveJob.timer = setTimeout(() => {
+      if (!liveJob || liveJob.id !== job.id) return;
+      stopThinking(); clearPending("live", "live");
+      liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
+    }, LIVE_TIMEOUT_MS);
+    $("liveStatus").textContent = thinkingText();
+    await startJob(job);
+  }
+  function applyLiveResult(res) {
+    if (!liveJob || res.id !== liveJob.id) return; // an old answer after timeout or after Live was turned off
+    stopThinking();
+    if (!res.ok) {
+      liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
+      return;
+    }
+    let reply = cleanText(res.text), adds = [], open = "";
+    try {
+      const r = parseJsonLoose(res.text);
+      if (r && typeof r.reply === "string") reply = r.reply;
+      if (r && Array.isArray(r.reminders)) adds = r.reminders;
+      if (r && typeof r.open === "string") open = r.open;
+    } catch {}
+    reply = String(reply || "").replace(/[*#`_>|~]/g, "").trim();
+    const made = [];
+    for (const a of adds) {
+      if (!a || !a.text || !/^\d{1,2}:\d{2}$/.test(String(a.time || ""))) continue;
+      const [h, m] = String(a.time).split(":").map(Number);
+      if (h > 23 || m > 59) continue;
+      const repeat = REPEAT_LABEL[a.repeat] ? a.repeat : "once";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(a.date || "")) ? a.date : todayDate();
+      const rr = addReminder(String(a.text), `${pad(h)}:${pad(m)}`, repeat, date);
+      made.push(reminderWhen(rr) + " " + rr.text);
+    }
+    if (!reply) reply = made.length ? "ตั้งการเตือนให้แล้ว" : "ขอโทษ ไม่ได้คำตอบจาก AI ลองพูดใหม่อีกครั้ง";
+    liveReply(reply);
+    if (made.length) addConvo("note", "ตั้งการเตือนแล้ว: " + made.join(", "));
+    if (open && TABS.includes(open)) showTab(open);
+  }
   handlers.liveSpoke = t => addConvo("app", t);
 
   // ---------- reminders ----------
@@ -211,6 +338,7 @@
     }
   };
   function apiKey() { try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } }
+  function otherKey() { try { return localStorage.getItem(LS_OTHER_KEY) || ""; } catch { return ""; } }
 
   /** Builds the request the native service sends. Throws with a message the person can act on. */
   function buildJob(kind, date, prompt, { schema = null, effort = "medium" } = {}) {
@@ -225,6 +353,15 @@
       // If a safety check declines the request, let the API retry on its recommended fallback model.
       if (s.model !== "claude-haiku-5-5") { body.fallbacks = "default"; headers["anthropic-beta"] = "server-side-fallback-2026-07-01"; }
       Object.assign(job, { format: "claude", url: "https://api.anthropic.com/v1/messages", headers, body });
+    } else if (s.provider === "openai") {
+      // Any provider with an OpenAI-compatible API. JSON is asked for in the prompt, which every provider supports.
+      const base = String(s.otherUrl || "").trim().replace(/\/+$/, "");
+      const key = otherKey(), model = String(s.otherModel || "").trim();
+      if (!/^https:\/\//.test(base)) throw new Error("ยังไม่ได้ใส่ที่อยู่ API ที่ขึ้นต้นด้วย https ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!key) throw new Error("ยังไม่ได้ใส่ API key ของผู้ให้บริการ ไปที่ \"ตั้งค่า\" ก่อน");
+      if (!model) throw new Error("ยังไม่ได้ใส่ชื่อโมเดล ไปที่ \"ตั้งค่า\" ก่อน");
+      const body = { model, messages: [{ role: "user", content: prompt }], temperature: 0.4 };
+      Object.assign(job, { format: "openai", url: base + "/chat/completions", headers: { Authorization: "Bearer " + key }, body });
     } else {
       const base = (s.localUrl || DEFAULT_SETTINGS.localUrl).replace(/\/+$/, "");
       const body = { model: s.localModel || DEFAULT_SETTINGS.localModel, messages: [{ role: "user", content: prompt }], stream: false, think: false, options: { temperature: 0.4 } };
@@ -306,6 +443,8 @@
       }
       if (made.length) pushChat({ role: "note", text: "ตั้งการเตือนแล้ว: " + made.join(", ") });
       renderChatButton();
+    } else if (res.kind === "live") {
+      applyLiveResult(res);
     } else if (res.kind === "reflection") {
       const out = $("reflection");
       if (!res.ok) { if (isToday) { out.hidden = false; out.innerHTML = `<p class="small">${esc(res.error)}</p>`; } renderReflectButton(); return; }
@@ -609,9 +748,12 @@ ${contextText(date)}
       wake: $("sWake").value || "06:30", wakeOn: $("sWakeOn").checked,
       evening: $("sEve").value || "19:30", eveningOn: $("sEveOn").checked, prepMinutes: +$("sPrep").value || 0,
       name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value,
+      otherUrl: $("sOtherUrl").value.trim(), otherModel: $("sOtherModel").value.trim(),
       provider: $("sProvider").value, localUrl: $("sLocalUrl").value.trim() || DEFAULT_SETTINGS.localUrl, localModel: $("sLocalModel").value || DEFAULT_SETTINGS.localModel, updatedAt: Date.now()
     });
     try { const k = $("sKey").value.trim(); if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY); } catch {}
+    try { const k = $("sOtherKey").value.trim(); if (k) localStorage.setItem(LS_OTHER_KEY, k); else localStorage.removeItem(LS_OTHER_KEY); } catch {}
+    if ($("liveSwitch").getAttribute("aria-checked") !== "true") setLiveMode(liveMode); // refresh the AI name on the Live screen
     pushAlarms();
     $("sStatus").textContent = "บันทึกการตั้งค่าแล้ว";
     setTimeout(checkPermissions, 800);
@@ -659,7 +801,43 @@ ${contextText(date)}
   });
 
   // ---------- provider settings ----------
-  function showProviderBox() { const c = $("sProvider").value === "claude"; $("claudeBox").hidden = !c; $("localBox").hidden = c; }
+  function showProviderBox() {
+    const p = $("sProvider").value;
+    $("claudeBox").hidden = p !== "claude"; $("localBox").hidden = p !== "local"; $("otherBox").hidden = p !== "openai";
+    if (p === "local") renderTermux();
+  }
+  $("sOtherPreset").addEventListener("change", () => { const v = $("sOtherPreset").value; if (v) $("sOtherUrl").value = v; $("sOtherUrl").focus(); });
+
+  // ---------- Termux: let the app start "ollama serve" by itself ----------
+  function termuxInfo() { try { return A && A.termuxStatus ? JSON.parse(A.termuxStatus()) : null; } catch { return null; } }
+  function renderTermux() {
+    const t = termuxInfo();
+    if (!t) { $("termuxState").textContent = "ใช้ได้เฉพาะในแอปบนมือถือ"; return; }
+    $("tsInstall").classList.toggle("done", t.installed); $("tsPerm").classList.toggle("done", t.permitted);
+    $("termuxPerm").hidden = t.permitted || !t.installed;
+    $("termuxState").textContent = !t.installed ? "ยังไม่พบแอป Termux ในเครื่อง ทำตามขั้นตอนด้านล่าง"
+      : !t.permitted ? "พบ Termux แล้ว แต่แอปนี้ยังไม่ได้รับสิทธิ์สั่งงาน Termux"
+      : "พร้อมแล้ว แอปจะเปิด Ollama ใน Termux ให้เองเมื่อต้องใช้";
+  }
+  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
+  $("termuxPerm").addEventListener("click", () => A && A.askTermuxPermission());
+  $("termuxOpen").addEventListener("click", () => A && A.openTermux());
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  $("termuxStart").addEventListener("click", async () => {
+    if (!A || !A.termuxStart) return;
+    const btn = $("termuxStart"); btn.disabled = true;
+    try {
+      try { await localGet("/api/tags"); $("termuxStatus").textContent = "Ollama ทำงานอยู่แล้ว เชื่อมต่อได้"; return; } catch {}
+      const r = A.termuxStart();
+      if (r !== "started") { $("termuxStatus").textContent = r === "no_termux" ? "ไม่พบแอป Termux" : r === "no_permission" ? "ยังไม่ได้รับสิทธิ์สั่ง Termux กด \"ขอสิทธิ์สั่ง Termux\" ก่อน" : "สั่ง Termux ไม่สำเร็จ: " + r; renderTermux(); return; }
+      for (let i = 0; i < 15; i++) {
+        $("termuxStatus").textContent = `สั่ง Termux แล้ว กำลังรอ Ollama… ${i * 2} วินาที`;
+        await sleep(2000);
+        try { await localGet("/api/tags"); $("termuxStatus").textContent = "เปิด Ollama สำเร็จ เชื่อมต่อได้แล้ว"; return; } catch {}
+      }
+      $("termuxStatus").textContent = "สั่งแล้วแต่ Ollama ยังไม่ตอบ ตรวจขั้นตอนที่ 2 และ 3 (ติดตั้ง Ollama และ allow-external-apps)";
+    } finally { btn.disabled = false; }
+  });
   function ensureModelOption(name) {
     if (!name) return;
     const sel = $("sLocalModel");
@@ -737,6 +915,8 @@ ${contextText(date)}
     ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
+    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey());
+    { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);
     set("eNotes", t.evening.notes); set("eWins", t.evening.wins); set("eTomorrow", t.evening.tomorrow); setScale($("eMood"), t.evening.mood);
     if (t.evening.reflection) { $("reflection").hidden = false; $("reflection").innerHTML = `<h3>สรุปจาก AI</h3><p>${esc(t.evening.reflection)}</p>`; }
@@ -759,7 +939,7 @@ ${contextText(date)}
   const info = nativeInfo();
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
-  hydrate(); renderHistory(); showTab("live");
+  hydrate(); renderHistory(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

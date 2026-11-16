@@ -41,6 +41,9 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     private String waitingToSay;
     private int errorsInRow;
     private int utterance;
+    /** true: say back what was heard (round 1). false: the page asks the AI and calls say() with the answer. */
+    private boolean echo = true;
+    private boolean thinking;
 
     LiveVoice(Context ctx, Events ev) {
         this.ctx = ctx.getApplicationContext();
@@ -48,6 +51,17 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     boolean isOn() { return on; }
+
+    void setEcho(boolean echo) { this.echo = echo; }
+
+    /** Speaks the page's answer, then listens again. Empty text just listens again. Call on the main thread. */
+    void answer(String text) {
+        if (!on) return;
+        thinking = false;
+        String t = text == null ? "" : text.trim();
+        if (t.isEmpty()) { relisten(200); return; }
+        say(t);
+    }
 
     /** Call on the main thread. */
     void start() {
@@ -80,6 +94,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         try { tts.stop(); tts.shutdown(); } catch (Exception ignored) {}
         tts = null;
         waitingToSay = null;
+        thinking = false;
         ev.state("off", "");
     }
 
@@ -101,7 +116,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     private void relisten(long delayMs) {
-        if (!on) return;
+        if (!on || thinking) return;
         main.postDelayed(this::listen, delayMs);
     }
 
@@ -116,7 +131,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
             relisten(800);
             return;
         }
-        ev.spoke(text);
+        if (echo) ev.spoke(text); // in AI mode the page logs the answer itself
     }
 
     private void afterSpeaking() {
@@ -157,7 +172,13 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         String text = list == null || list.isEmpty() ? "" : list.get(0).trim();
         if (text.isEmpty()) { relisten(200); return; }
         ev.heard(text);
-        say(text); // round 1: say back exactly what was heard
+        if (echo) {
+            say(text); // round 1: say back exactly what was heard
+        } else {
+            // The page sends the text to the AI; the microphone stays closed until answer() is called.
+            thinking = true;
+            ev.state("thinking", "กำลังคิด…");
+        }
     }
 
     @Override
