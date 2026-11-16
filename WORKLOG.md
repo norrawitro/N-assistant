@@ -180,3 +180,23 @@ Owner phone notes from the same session:
 **Checks:** the Java compiles in CI. The dialog itself shows only on the phone; it cannot be seen in the browser test.
 
 **Note:** GPS-Tracker has the same gap. Its "ลบ token และกุญแจ" button uses `confirm()` too. It is not fixed yet; it is left for that app's next change.
+
+## 2026-11-16 (later): turning Live off no longer throws the answer away
+
+**Owner's point:** Live is only the voice way in and out. The thinking belongs to the conversation log. After Live is turned off, the phone is still thinking, and the answer should land in the log.
+
+**Before:** turning Live off cleared the waiting job, so a late answer was silently dropped. The local AI cannot be stopped mid-answer, so the work was wasted.
+
+**Now:**
+- **While the AI works:** the conversation log shows a "ตอบ · กำลังคิด… N วินาที" row, whether Live is on or off.
+- **When the answer arrives:**
+  - it is always written in the log, and any reminders or page requests are applied;
+  - it is spoken only if Live is still on.
+- **Late answers:**
+  - an answer that arrives after the 5-minute "no answer" message is ignored, so the log does not get it twice;
+  - an answer to a question from before the app was reopened is still logged.
+
+**Checks:** browser test with a mock bridge.
+- Thinking row shown, and still shown after Live is switched off.
+- The late answer is logged and not spoken, and the thinking row is removed.
+- The earlier tests still pass with no errors.
