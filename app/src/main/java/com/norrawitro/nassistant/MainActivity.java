@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private boolean pageReady;
     private String pendingTab;
     private LiveVoice live;
+    private boolean liveEcho = true;
     /** The activity while it is on screen, so background AI results can go straight to the page. */
     private static volatile MainActivity visible;
 
@@ -169,6 +170,7 @@ public class MainActivity extends Activity {
                 @Override public void partial(String text) { emit("livePartial", JSONObject.quote(text)); }
             });
         }
+        live.setEcho(liveEcho);
         live.start();
     }
 
@@ -343,6 +345,22 @@ public class MainActivity extends Activity {
                     startLive();
                 }
             });
+        }
+
+        /** "ai": the page answers through liveSay(); "echo": say back what was heard. */
+        @JavascriptInterface
+        public void liveMode(String mode) {
+            main.post(() -> {
+                boolean echo = !"ai".equals(mode);
+                liveEcho = echo;
+                if (live != null) live.setEcho(echo);
+            });
+        }
+
+        /** Speaks the AI's answer (or a message about what went wrong), then Live listens again. */
+        @JavascriptInterface
+        public void liveSay(String text) {
+            main.post(() -> { if (live != null) live.answer(text); });
         }
 
         @JavascriptInterface

@@ -69,6 +69,13 @@ p{margin:0}
 @keyframes pulse{50%{box-shadow:0 0 0 18px var(--accent-soft)}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="listening"]{animation:none}}
 .live-status{min-height:1.6em;text-align:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--muted);font:600 .86rem var(--f-display);padding:7px 14px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.live-switch[data-state="thinking"]{animation:think 1.2s ease-in-out infinite}
+@keyframes think{50%{opacity:.75}}
+@media (prefers-reduced-motion: reduce){.live-switch[data-state="thinking"]{animation:none}}
+.convo li.note{align-self:center;background:transparent;color:var(--warn);font-size:.86rem;text-align:center}
 .live-partial{min-height:1.5em;text-align:center;color:var(--muted);font-size:.95rem}
 .convo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;overscroll-behavior:contain}
 .convo li{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;max-width:88%;overflow-wrap:anywhere}
@@ -204,7 +211,11 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <button class="live-switch" id="liveSwitch" type="button" role="switch" aria-checked="false" data-state="off">
         <span>LIVE<span class="sw-sub" id="liveSub">แตะเพื่อเปิด</span></span>
       </button>
-      <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (รอบทดสอบ ยังไม่ใช้ AI)</p>
+      <div class="seg" role="group" aria-label="วิธีตอบ">
+        <button type="button" id="modeAi" aria-pressed="true">ตอบด้วย AI</button>
+        <button type="button" id="modeEcho" aria-pressed="false">พูดซ้ำ (ทดสอบ)</button>
+      </div>
+      <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย</p>
       <p class="live-partial" id="livePartial" aria-live="polite"></p>
     </div>
     <div class="card">

@@ -297,7 +297,8 @@ public class AiService extends Service {
         boolean ok = res.optBoolean("ok");
         String kind = res.optString("kind");
         boolean evening = "reflection".equals(kind);
-        boolean chat = "chat".equals(kind);
+        boolean live = "live".equals(kind);
+        boolean chat = "chat".equals(kind) || live;
         String title = ok
                 ? (chat ? "ผู้ช่วยตอบแล้ว" : evening ? "สรุปวันนี้พร้อมแล้ว" : (res.optBoolean("prepared") ? "เตรียมแผนวันนี้ไว้ให้แล้ว" : "แผนวันนี้พร้อมแล้ว"))
                 : "AI ทำงานไม่สำเร็จ";
@@ -308,7 +309,7 @@ public class AiService extends Service {
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setAutoCancel(true)
-                .setContentIntent(openApp(this, chat ? "chat" : evening ? "evening" : "morning"))
+                .setContentIntent(openApp(this, live ? "live" : chat ? "chat" : evening ? "evening" : "morning"))
                 .build();
         try {
             getSystemService(NotificationManager.class).notify(NOTIF_DONE, n);

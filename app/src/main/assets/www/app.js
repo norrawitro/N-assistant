@@ -87,8 +87,8 @@
     const ol = $("convo"); ol.textContent = "";
     if (!convo.length) { const li = document.createElement("li"); li.className = "convo-empty"; li.textContent = "ยังไม่มีบทสนทนา"; ol.appendChild(li); return; }
     convo.forEach(m => {
-      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : "app";
-      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : "ตอบ"} · ${convoTime(m.t)}`;
+      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : m.who === "note" ? "note" : "app";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : m.who === "note" ? "แจ้ง" : "ตอบ"} · ${convoTime(m.t)}`;
       const p = document.createElement("span"); p.textContent = m.text;
       li.append(w, p); ol.appendChild(li);
     });
@@ -100,7 +100,8 @@
   function setLive(on, state, message) {
     const sw = $("liveSwitch");
     sw.setAttribute("aria-checked", String(on)); sw.dataset.state = on ? state : "off";
-    $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : "กำลังฟัง";
+    $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : state === "thinking" ? "กำลังคิด" : "กำลังฟัง";
+    if (on && state === "thinking") message = thinkingText();
     if (message) $("liveStatus").textContent = message;
     else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
     if (!on || state !== "listening") $("livePartial").textContent = "";
@@ -110,9 +111,130 @@
     if ($("liveSwitch").getAttribute("aria-checked") === "true") { A.liveStop(); setLive(false, "off", "ปิด Live แล้ว"); }
     else { setLive(true, "listening", "กำลังเปิดไมโครโฟน…"); A.liveStart(); }
   });
-  handlers.live = p => { if (p) setLive(!!p.on, p.state, p.message); };
+  handlers.live = p => {
+    if (!p) return;
+    if (!p.on) stopThinking();
+    setLive(!!p.on, p.state, p.message);
+  };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
-  handlers.liveHeard = t => { $("livePartial").textContent = ""; addConvo("me", t); };
+  handlers.liveHeard = t => {
+    $("livePartial").textContent = "";
+    addConvo("me", t);
+    if (liveMode === "ai") askLiveAI(t);
+  };
+
+  // ---------- Live, round 2: the AI decides how to react ----------
+  const LIVE_MODE_KEY = "nLiveMode";
+  let liveMode = "ai";
+  try { liveMode = localStorage.getItem(LIVE_MODE_KEY) === "echo" ? "echo" : "ai"; } catch {}
+  function setLiveMode(m) {
+    liveMode = m === "echo" ? "echo" : "ai";
+    try { localStorage.setItem(LIVE_MODE_KEY, liveMode); } catch {}
+    $("modeAi").setAttribute("aria-pressed", String(liveMode === "ai"));
+    $("modeEcho").setAttribute("aria-pressed", String(liveMode === "echo"));
+    if (A && A.liveMode) A.liveMode(liveMode);
+    if ($("liveSwitch").getAttribute("aria-checked") !== "true") {
+      $("liveStatus").textContent = liveMode === "ai"
+        ? `เปิด Live แล้วพูดภาษาไทย AI (${aiName()}) จะคิดว่าจะตอบหรือทำอะไรให้`
+        : "เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (ไม่ใช้ AI)";
+    }
+  }
+  const aiName = () => settings().provider === "claude" ? "Claude" : "AI ในเครื่อง";
+  $("modeAi").addEventListener("click", () => setLiveMode("ai"));
+  $("modeEcho").addEventListener("click", () => setLiveMode("echo"));
+
+  const LIVE_TIMEOUT_MS = 5 * 60 * 1000;
+  let liveJob = null; // { id, at, timer, tick }
+  function thinkingText() {
+    const sec = liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0;
+    const slow = settings().provider !== "claude" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : "";
+    return `กำลังคิด… ${sec} วินาที${slow}`;
+  }
+  function stopThinking() {
+    if (!liveJob) return;
+    clearTimeout(liveJob.timer); clearInterval(liveJob.tick); liveJob = null;
+  }
+  /** Says something to the person and writes it in the log. Live listens again afterwards. */
+  function liveReply(text, kind = "app") {
+    addConvo(kind, text);
+    if (A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
+  }
+  // A function, because CHAT_SCHEMA is defined further down the file.
+  const liveSchema = () => ({
+    type: "object", additionalProperties: false, required: ["reply", "reminders", "open"],
+    properties: {
+      reply: { type: "string" },
+      reminders: CHAT_SCHEMA.properties.reminders,
+      open: { type: "string", enum: ["", "morning", "evening", "chat", "remind", "history", "settings"] }
+    }
+  });
+  function livePrompt(text) {
+    const now = new Date();
+    const history = convo.filter(m => m.who !== "note").slice(-9, -1).map(m => `${m.who === "me" ? "ผู้ใช้" : "ผู้ช่วย"}: ${m.text}`).join("\n");
+    const rems = reminders().filter(r => r.on !== false && nextAt(r)).slice(0, 15).map(r => `${reminderWhen(r)} ${r.text}`).join("; ");
+    const b = today().morning.brief;
+    return `คุณคือ N-assistant ผู้ช่วยส่วนตัวที่คุยกับผู้ใช้ด้วยเสียง ข้อความของผู้ใช้มาจากการแปลงเสียงเป็นข้อความ อาจสะกดผิดหรือขาดคำ ให้เดาความหมายที่ใกล้ที่สุด
+ตอนนี้: ${thDate(now)} เวลา ${hhmm(now)} (วันที่ ${todayDate()})
+${contextText(todayDate())}
+แผนวันนี้: ${b ? `เป้าหลัก ${b.focus}; งาน ${(b.priorities || []).join("; ")}` : "(ยังไม่ได้ทำ)"}
+การเตือนที่ตั้งไว้: ${rems || "(ไม่มี)"}
+
+บทสนทนาก่อนหน้า:
+${history || "(เริ่มบทสนทนาใหม่)"}
+
+ผู้ใช้พูดว่า: ${text}
+
+ตัดสินใจว่าจะตอบสนองอย่างไร แล้วตอบเป็น JSON เท่านั้น:
+- reply = สิ่งที่จะพูดออกเสียงให้ผู้ใช้ฟัง ภาษาไทย สั้น 1-3 ประโยค เป็นภาษาพูด ห้ามมี markdown, emoji, รายการหัวข้อ หรือสัญลักษณ์
+- reminders = การเตือนที่ต้องตั้งใหม่ (เฉพาะเมื่อผู้ใช้ขอให้เตือน ไม่อย่างนั้นให้เป็น []) แต่ละรายการมี text, time ("HH:MM" 24 ชั่วโมง), date ("YYYY-MM-DD" คำนวณจากวันที่ตอนนี้), repeat ("once" | "daily" | "weekdays" | "weekly") ถ้าตั้งเตือนให้บอกวันเวลาที่ตั้งใน reply
+- open = หน้าที่จะเปิดให้ผู้ใช้ เฉพาะเมื่อผู้ใช้ขอให้เปิด: "morning" (แผนตอนเช้า), "evening" (บันทึกตอนเย็น), "chat" (แชทผู้ช่วย), "remind" (รายการเตือน), "history" (ประวัติ), "settings" (ตั้งค่า) ไม่อย่างนั้นให้เป็น ""`;
+  }
+  async function askLiveAI(text) {
+    stopThinking();
+    let job;
+    try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low" }); }
+    catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return; }
+    liveJob = { id: job.id, at: Date.now() };
+    liveJob.tick = setInterval(() => { if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText(); }, 1000);
+    liveJob.timer = setTimeout(() => {
+      if (!liveJob || liveJob.id !== job.id) return;
+      stopThinking(); clearPending("live", "live");
+      liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider !== "claude" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
+    }, LIVE_TIMEOUT_MS);
+    $("liveStatus").textContent = thinkingText();
+    await startJob(job);
+  }
+  function applyLiveResult(res) {
+    if (!liveJob || res.id !== liveJob.id) return; // an old answer after timeout or after Live was turned off
+    stopThinking();
+    if (!res.ok) {
+      const local = settings().provider !== "claude";
+      liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}${local ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""}`.trim(), "note");
+      return;
+    }
+    let reply = cleanText(res.text), adds = [], open = "";
+    try {
+      const r = parseJsonLoose(res.text);
+      if (r && typeof r.reply === "string") reply = r.reply;
+      if (r && Array.isArray(r.reminders)) adds = r.reminders;
+      if (r && typeof r.open === "string") open = r.open;
+    } catch {}
+    reply = String(reply || "").replace(/[*#`_>|~]/g, "").trim();
+    const made = [];
+    for (const a of adds) {
+      if (!a || !a.text || !/^\d{1,2}:\d{2}$/.test(String(a.time || ""))) continue;
+      const [h, m] = String(a.time).split(":").map(Number);
+      if (h > 23 || m > 59) continue;
+      const repeat = REPEAT_LABEL[a.repeat] ? a.repeat : "once";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(a.date || "")) ? a.date : todayDate();
+      const rr = addReminder(String(a.text), `${pad(h)}:${pad(m)}`, repeat, date);
+      made.push(reminderWhen(rr) + " " + rr.text);
+    }
+    if (!reply) reply = made.length ? "ตั้งการเตือนให้แล้ว" : "ขอโทษ ไม่ได้คำตอบจาก AI ลองพูดใหม่อีกครั้ง";
+    liveReply(reply);
+    if (made.length) addConvo("note", "ตั้งการเตือนแล้ว: " + made.join(", "));
+    if (open && TABS.includes(open)) showTab(open);
+  }
   handlers.liveSpoke = t => addConvo("app", t);
 
   // ---------- reminders ----------
@@ -306,6 +428,8 @@
       }
       if (made.length) pushChat({ role: "note", text: "ตั้งการเตือนแล้ว: " + made.join(", ") });
       renderChatButton();
+    } else if (res.kind === "live") {
+      applyLiveResult(res);
     } else if (res.kind === "reflection") {
       const out = $("reflection");
       if (!res.ok) { if (isToday) { out.hidden = false; out.innerHTML = `<p class="small">${esc(res.error)}</p>`; } renderReflectButton(); return; }
@@ -759,7 +883,7 @@ ${contextText(date)}
   const info = nativeInfo();
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
-  hydrate(); renderHistory(); showTab("live");
+  hydrate(); renderHistory(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();
