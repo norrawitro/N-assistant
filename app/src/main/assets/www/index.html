@@ -53,7 +53,7 @@ p{margin:0}
 /* tabs */
 /* Top bar: menu (old features) on the left, settings on the right */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.topbar .title{font:700 1.05rem var(--f-display);letter-spacing:.02em}
+.topbar .title{font:700 1.05rem var(--f-display);letter-spacing:.02em;border:0;background:transparent;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
 .icon-btn{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;cursor:pointer;font-size:1.25rem;line-height:1}
 .icon-btn svg{width:22px;height:22px}
 .menu{position:absolute;top:56px;left:0;z-index:20;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column}
@@ -175,7 +175,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <button class="icon-btn" id="menuBtn" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-      <span class="title" id="viewTitle">Live</span>
+      <button class="title" id="viewTitle" type="button" aria-label="กลับหน้าแรก Live">Live</button>
       <button class="icon-btn" id="settingsBtn" type="button" aria-label="ตั้งค่า">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>

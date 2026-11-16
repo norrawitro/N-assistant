@@ -111,8 +111,12 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+        // The page handles Back first: close the menu, or go back to the Live home screen.
+        web.evaluateJavascript("window.__back?window.__back():false", handled -> {
+            if ("true".equals(handled)) return;
+            if (web.canGoBack()) web.goBack();
+            else super.onBackPressed();
+        });
     }
 
     private void deliverRing() {

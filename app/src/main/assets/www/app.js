@@ -54,11 +54,13 @@
   scale($("mEnergy")); scale($("eMood"));
 
   // ---------- tabs ----------
+  let currentTab = "live";
   const TABS = ["live", "morning", "evening", "chat", "remind", "history", "settings"];
   const TAB_TITLE = { live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
     if (!TABS.includes(name)) name = "live";
-    $("viewTitle").textContent = TAB_TITLE[name];
+    $("viewTitle").textContent = name === "live" ? "Live" : `‹ ${TAB_TITLE[name]}`;
+    currentTab = name;
     document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
     if (name === "live") renderConvo();
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
@@ -78,6 +80,13 @@
   document.addEventListener("click", e => { if (!$("menu").hidden && !e.target.closest("#menu")) setMenu(false); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
   $("settingsBtn").addEventListener("click", () => { setMenu(false); showTab("settings"); });
+  $("viewTitle").addEventListener("click", () => { setMenu(false); if (currentTab !== "live") showTab("live"); });
+  // Android Back: close the menu, else return to Live; on Live, let Android handle it (leave the app).
+  window.__back = () => {
+    if (!$("menu").hidden) { setMenu(false); return true; }
+    if (currentTab !== "live") { showTab("live"); return true; }
+    return false;
+  };
 
   // ---------- Live: Thai speech in, the same words spoken back (round 1, no AI) ----------
   const CONVO_KEY = "nLiveConvo";
