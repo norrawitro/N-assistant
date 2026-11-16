@@ -51,9 +51,13 @@
   scale($("mEnergy")); scale($("eMood"));
 
   // ---------- tabs ----------
-  const TABS = ["morning", "evening", "chat", "remind", "history", "settings"];
+  const TABS = ["live", "morning", "evening", "chat", "remind", "history", "settings"];
+  const TAB_TITLE = { live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
-    if (!TABS.includes(name)) name = "morning";
+    if (!TABS.includes(name)) name = "live";
+    $("viewTitle").textContent = TAB_TITLE[name];
+    document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
+    if (name === "live") renderConvo();
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     TABS.forEach(t => $("p-" + t).hidden = t !== name);
     if (name === "evening") renderChecks();
@@ -63,6 +67,53 @@
   }
   document.querySelector("nav").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); });
   handlers.tab = name => showTab(name);
+
+  // ---------- menu (all earlier features) and settings button ----------
+  function setMenu(open) { $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open)); }
+  $("menuBtn").addEventListener("click", e => { e.stopPropagation(); setMenu($("menu").hidden); });
+  $("menu").addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) { setMenu(false); showTab(b.dataset.go); } });
+  document.addEventListener("click", e => { if (!$("menu").hidden && !e.target.closest("#menu")) setMenu(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
+  $("settingsBtn").addEventListener("click", () => { setMenu(false); showTab("settings"); });
+
+  // ---------- Live: Thai speech in, the same words spoken back (round 1, no AI) ----------
+  const CONVO_KEY = "nLiveConvo";
+  const CONVO_MAX = 300;
+  let convo = [];
+  try { convo = JSON.parse(localStorage.getItem(CONVO_KEY) || "[]"); if (!Array.isArray(convo)) convo = []; } catch { convo = []; }
+  function saveConvo() { try { localStorage.setItem(CONVO_KEY, JSON.stringify(convo.slice(-CONVO_MAX))); } catch {} }
+  const convoTime = t => new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  function renderConvo() {
+    const ol = $("convo"); ol.textContent = "";
+    if (!convo.length) { const li = document.createElement("li"); li.className = "convo-empty"; li.textContent = "ยังไม่มีบทสนทนา"; ol.appendChild(li); return; }
+    convo.forEach(m => {
+      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : "app";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : "ตอบ"} · ${convoTime(m.t)}`;
+      const p = document.createElement("span"); p.textContent = m.text;
+      li.append(w, p); ol.appendChild(li);
+    });
+    ol.scrollTop = ol.scrollHeight;
+  }
+  function addConvo(who, text) { convo.push({ t: Date.now(), who, text }); if (convo.length > CONVO_MAX) convo = convo.slice(-CONVO_MAX); saveConvo(); renderConvo(); }
+  $("convoClear").addEventListener("click", () => { if (convo.length && confirm("ล้างบันทึกการสนทนาทั้งหมด?")) { convo = []; saveConvo(); renderConvo(); } });
+
+  function setLive(on, state, message) {
+    const sw = $("liveSwitch");
+    sw.setAttribute("aria-checked", String(on)); sw.dataset.state = on ? state : "off";
+    $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : "กำลังฟัง";
+    if (message) $("liveStatus").textContent = message;
+    else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
+    if (!on || state !== "listening") $("livePartial").textContent = "";
+  }
+  $("liveSwitch").addEventListener("click", () => {
+    if (!A || !A.liveStart) { $("liveStatus").textContent = "Live ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
+    if ($("liveSwitch").getAttribute("aria-checked") === "true") { A.liveStop(); setLive(false, "off", "ปิด Live แล้ว"); }
+    else { setLive(true, "listening", "กำลังเปิดไมโครโฟน…"); A.liveStart(); }
+  });
+  handlers.live = p => { if (p) setLive(!!p.on, p.state, p.message); };
+  handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
+  handlers.liveHeard = t => { $("livePartial").textContent = ""; addConvo("me", t); };
+  handlers.liveSpoke = t => addConvo("app", t);
 
   // ---------- reminders ----------
   const REPEAT_LABEL = { once: "ครั้งเดียว", daily: "ทุกวัน", weekdays: "จันทร์-ศุกร์", weekly: "ทุกสัปดาห์" };
@@ -708,7 +759,7 @@ ${contextText(date)}
   const info = nativeInfo();
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
-  hydrate(); renderHistory(); showTab(new Date().getHours() >= 16 ? "evening" : "morning");
+  hydrate(); renderHistory(); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

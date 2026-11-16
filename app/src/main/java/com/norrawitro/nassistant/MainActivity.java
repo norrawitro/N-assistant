@@ -31,6 +31,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final int REQ_SAVE = 7001;
     private static final int REQ_NOTIF = 7002;
+    private static final int REQ_MIC = 7003;
     private static final String START_URL = "https://appassets.androidplatform.net/assets/www/index.html";
 
     private WebView web;
@@ -41,6 +42,7 @@ public class MainActivity extends Activity {
     private File downloadedApk;
     private boolean pageReady;
     private String pendingTab;
+    private LiveVoice live;
     /** The activity while it is on screen, so background AI results can go straight to the page. */
     private static volatile MainActivity visible;
 
@@ -135,6 +137,43 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         if (visible == this) visible = null;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Round 1: Live works only while the app is on screen, so the microphone is never left open in the background.
+        if (live != null && live.isOn()) live.stop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (live != null) live.stop();
+        super.onDestroy();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_MIC) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startLive();
+        else emitLive("error", "ต้องอนุญาตไมโครโฟนก่อนจึงจะใช้ Live ได้", false);
+    }
+
+    private void startLive() {
+        if (live == null) {
+            live = new LiveVoice(this, new LiveVoice.Events() {
+                @Override public void state(String state, String message) { emitLive(state, message, live != null && live.isOn()); }
+                @Override public void heard(String text) { emit("liveHeard", JSONObject.quote(text)); }
+                @Override public void spoke(String text) { emit("liveSpoke", JSONObject.quote(text)); }
+                @Override public void partial(String text) { emit("livePartial", JSONObject.quote(text)); }
+            });
+        }
+        live.start();
+    }
+
+    private void emitLive(String state, String message, boolean on) {
+        emit("live", "{\"state\":" + JSONObject.quote(state) + ",\"message\":" + JSONObject.quote(message == null ? "" : message) + ",\"on\":" + on + "}");
     }
 
     /** Calls window.__native(event, payload) in the page. payload must already be valid JS. */
@@ -293,6 +332,22 @@ public class MainActivity extends Activity {
                         .putExtra(Intent.EXTRA_SUBJECT, title).putExtra(Intent.EXTRA_TEXT, content);
                 startActivity(Intent.createChooser(send, title));
             });
+        }
+
+        @JavascriptInterface
+        public void liveStart() {
+            main.post(() -> {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                } else {
+                    startLive();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void liveStop() {
+            main.post(() -> { if (live != null) live.stop(); else emitLive("off", "", false); });
         }
 
         @JavascriptInterface
