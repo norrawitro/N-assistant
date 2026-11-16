@@ -157,3 +157,14 @@ Request: item 4, relayed by Manager ("ใส่ไปด้วยเลย"). A 
   - against a real repo (no token here);
   - with a real answering AI;
   - on the phone.
+
+## 2026-11-16 (later): a clear way back to the Live home screen
+
+The owner said there was no button to go back to the home screen after leaving Live; the only way was the menu.
+- **Android Back:** it now closes the menu if it is open, and otherwise returns to Live from any page. On Live, Back leaves the app as before.
+- **Page title:** on other pages the title shows "‹ <page>". Tapping it returns to Live.
+- **Checks:** browser test of Back on Live (not handled), Back from Settings (returns to Live), tapping the title from Reminders (returns to Live), and Back with the menu open (closes it). No errors.
+
+Owner phone notes from the same session:
+- Play Protect blocked v1.0.12 at first; the owner went ahead and installed it.
+- The Termux "Run commands" permission does not appear for this app. The Termux build seems to be the Play Store one (its welcome text points to doc.termux.com). So for now Ollama is started by hand in Termux, and it was already running.
