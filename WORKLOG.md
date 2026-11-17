@@ -375,3 +375,40 @@ Owner phone notes from the same session:
   - a typed question answered by the bot, and another sent to the AI with today's log in the prompt.
   - No errors and no sideways scrolling. The earlier Live tests pass.
 - Not tested on the phone.
+
+## 2026-11-17 (later): knowledge base ("คลังความรู้")
+
+**Owner:** connect the system to a knowledge base, perhaps as files about different subjects, so that anything asked can be answered.
+
+### What was built
+- **`kb.js` (new, no AI):** splits each file into pieces of about one paragraph, under its nearest Markdown heading.
+  - **Search** compares overlapping letter pairs (bigrams), so it works on Thai text without spaces. Rarer pairs count more.
+  - Question and polite words are removed first, and a few words that mean the same are unified (กิน/ทาน, รถยนต์/รถ, โทรศัพท์/เบอร์, คุณแม่/แม่).
+  - Each result has a "cover" (the share of the question found) and a score.
+  - `bestLines` picks the line(s) of a piece that answer best, for a short spoken answer.
+- **Menu "คลังความรู้" page:**
+  - import .md / .txt files (several at once, up to 2 MB each);
+  - type a new topic, with a title and `#` headings;
+  - a search box to try questions;
+  - the list of topics, with source, size and date, each deletable.
+- **Live:**
+  - **Answer straight from the base.** When the bot has no rule and the best piece covers at least 60% of the question, the bot answers from it at once: "จากคลังความรู้ เรื่อง… …". No AI is used.
+  - **Pass pieces to the AI.** Otherwise the up to 3 pieces covering at least 30% go into the AI prompt, which is told to answer from them and say so.
+  - **"สอนว่า…" / "เพิ่มความรู้ว่า…"** adds a line to a topic "สิ่งที่สอนด้วยเสียง".
+  - **"ค้นคลังความรู้เรื่อง…"** searches the base. "เปิดคลังความรู้" opens the page.
+- **File picker:** the WebView now has a file picker (`onShowFileChooser`). Before this, `<input type=file>` did nothing in the app, which also affected the old "นำเข้าไฟล์ JSON".
+- **Backup and storage:** the base is in the JSON backup and its import. Everything stays on the phone.
+- **Bot fix:** "แมวชื่ออะไร" was taken as "what is your name". That reply now needs คุณ/เธอ, or the sentence to start with ชื่ออะไร.
+
+### Checks
+- Node, search on sample files (house, car, health): 10 questions. The 8 that should be found are on top with enough cover, and 2 unrelated questions fall below the threshold.
+- All bot rule tests pass.
+- Browser test with a mock bridge:
+  - file import (2 files → 3 pieces), a typed topic, and the search box;
+  - Live answering 4 questions straight from the base with the right line, and nothing sent to the AI;
+  - "สอนว่า…" then asking about it;
+  - pieces passed to the AI for a related question needing thought;
+  - export, and the base still there after a reload.
+  - No errors and no sideways scrolling.
+- **Test-tool note:** the browser tool could not attach files with Thai file names, so ASCII names were used. On the phone the system picker gives the file directly.
+- **Not tested on the phone:** the file picker and real files.

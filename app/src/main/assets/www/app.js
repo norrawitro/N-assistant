@@ -55,8 +55,8 @@
 
   // ---------- tabs ----------
   let currentTab = "live";
-  const TABS = ["live", "morning", "evening", "chat", "remind", "history", "settings"];
-  const TAB_TITLE = { live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
+  const TABS = ["kb", "live", "morning", "evening", "chat", "remind", "history", "settings"];
+  const TAB_TITLE = { kb: "คลังความรู้", live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
     if (!TABS.includes(name)) name = "live";
     $("viewTitle").textContent = name === "live" ? "Live" : `‹ ${TAB_TITLE[name]}`;
@@ -227,6 +227,88 @@
     try { localStorage.setItem("nassistant.chatMigrated", "1"); } catch {}
   }
 
+  // ---------- knowledge base: files the owner imports or types; searched by the bot, given to the AI ----------
+  const kbFiles = () => (docs.kb && Array.isArray(docs.kb.files)) ? docs.kb.files : [];
+  let kbChunks = null; // built from the files when first needed
+  function kbAll() {
+    if (!kbChunks) { kbChunks = []; for (const f of kbFiles()) for (const c of NKb.chunk(f.title, f.text)) kbChunks.push({ ...c, file: f.id }); }
+    return kbChunks;
+  }
+  function saveKb(files) { save("kb", { files, updatedAt: Date.now() }); kbChunks = null; renderKb(); }
+  function addKbFile(title, text, source) {
+    title = String(title || "").trim() || "ไม่มีชื่อ"; text = String(text || "").trim();
+    if (!text) return null;
+    const files = kbFiles().slice(), same = files.findIndex(f => f.title === title && f.source === source);
+    const f = { id: same >= 0 ? files[same].id : uid(), title, text, source, at: Date.now() };
+    if (same >= 0) files[same] = f; else files.push(f);
+    saveKb(files);
+    return f;
+  }
+  /** "สอนว่า…" adds a line to one file kept for things said aloud. */
+  function learn(text) {
+    const files = kbFiles().slice(), i = files.findIndex(f => f.source === "voice");
+    const line = "- " + text;
+    if (i >= 0) files[i] = { ...files[i], text: files[i].text + "\n" + line, at: Date.now() };
+    else files.push({ id: uid(), title: "สิ่งที่สอนด้วยเสียง", text: line, source: "voice", at: Date.now() });
+    saveKb(files);
+  }
+  const KB_DIRECT = 0.6, KB_CONTEXT = 0.3; // direct answer from the bot / pieces given to the AI
+  /** Pieces worth giving the AI for this question (empty when nothing is close enough). */
+  function kbContext(q) { return NKb.search(kbAll(), q, 3).filter(r => r.cover >= KB_CONTEXT); }
+  function renderKb() {
+    const files = kbFiles().slice().reverse(), ol = $("kbList");
+    $("kbCount").textContent = files.length ? `(${files.length} เรื่อง ${kbAll().length} ส่วน)` : "";
+    ol.textContent = "";
+    if (!files.length) { const li = document.createElement("li"); li.className = "muted small"; li.textContent = "ยังไม่มีเรื่องในคลัง"; ol.appendChild(li); return; }
+    for (const f of files) {
+      const li = document.createElement("li");
+      const t = document.createElement("span"); t.className = "kt";
+      const m = document.createElement("span"); m.className = "meta";
+      m.textContent = `${f.source === "voice" ? "สอนด้วยเสียง" : f.source === "typed" ? "พิมพ์เอง" : "ไฟล์"} · ${f.text.length.toLocaleString("th-TH")} ตัวอักษร · ${new Date(f.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`;
+      t.append(m, document.createTextNode(f.title));
+      const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.dataset.id = f.id; del.setAttribute("aria-label", "ลบเรื่องนี้");
+      li.append(t, del); ol.appendChild(li);
+    }
+  }
+  $("kbList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    const f = kbFiles().find(x => x.id === b.dataset.id);
+    if (f && confirm(`ลบเรื่อง "${f.title}" ออกจากคลัง?`)) saveKb(kbFiles().filter(x => x.id !== f.id));
+  });
+  $("kbFile").addEventListener("change", async e => {
+    const list = [...(e.target.files || [])]; let n = 0, skipped = 0;
+    for (const file of list) {
+      try {
+        if (file.size > 2 * 1024 * 1024) { skipped++; continue; }
+        const text = await file.text();
+        if (addKbFile(file.name.replace(/\.(md|markdown|txt)$/i, ""), text, "file")) n++; else skipped++;
+      } catch { skipped++; }
+    }
+    $("kbStatus").textContent = `นำเข้าแล้ว ${n} ไฟล์` + (skipped ? ` (ข้าม ${skipped} ไฟล์ที่ว่างหรือใหญ่เกิน 2 MB)` : "");
+    e.target.value = "";
+  });
+  $("kbNewBtn").addEventListener("click", () => { $("kbNew").hidden = false; $("kbTitle").focus(); });
+  $("kbCancel").addEventListener("click", () => { $("kbNew").hidden = true; });
+  $("kbSave").addEventListener("click", () => {
+    const f = addKbFile($("kbTitle").value, $("kbText").value, "typed");
+    if (!f) { $("kbStatus").textContent = "ใส่เนื้อหาก่อน"; return; }
+    $("kbTitle").value = ""; $("kbText").value = ""; $("kbNew").hidden = true;
+    $("kbStatus").textContent = `บันทึกเรื่อง "${f.title}" แล้ว`;
+  });
+  function kbSearchUi() {
+    const q = $("kbQuery").value.trim(), box = $("kbResults"); box.textContent = "";
+    if (!q) return;
+    const res = NKb.search(kbAll(), q, 3);
+    if (!res.length) { box.textContent = "ไม่พบในคลัง"; return; }
+    for (const r of res) {
+      const d = document.createElement("div"); d.className = "kbhit";
+      const b = document.createElement("b"); b.textContent = `${r.chunk.title} · ตรง ${Math.round(r.cover * 100)}%`;
+      d.append(b, document.createTextNode(NKb.excerpt(r.chunk.text, 400))); box.appendChild(d);
+    }
+  }
+  $("kbSearch").addEventListener("click", kbSearchUi);
+  $("kbQuery").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); kbSearchUi(); } });
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
@@ -236,6 +318,11 @@
     const r = window.NBot ? NBot.parse(t, { now: new Date(), pending: botPending, aiBusy: !!liveJob }) : null;
     botPending = null;
     if (r) { applyBot(r); return; }
+    const kbTop = kbFiles().length ? NKb.search(kbAll(), t, 1)[0] : null;
+    if (kbTop && kbTop.cover >= KB_DIRECT) {
+      liveReply(`จากคลังความรู้ เรื่อง${kbTop.chunk.title} ${NKb.bestLines(kbTop.chunk.text, t)}`, "bot");
+      return;
+    }
     if (liveJob) {
       liveQueue.push(t);
       liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
@@ -286,6 +373,11 @@
         if (!lines.length) liveReply("วันนี้ยังไม่มีที่จดไว้ให้ลบครับ", "bot");
         else { const l = lines[lines.length - 1]; removeLine(todayDate(), "notes", l); liveReply(`ลบที่จดล่าสุดแล้วครับ ${l.replace(/^•\s*/, "")}`, "bot"); }
       }
+    } else if (r.type === "learn") { learn(r.text); liveReply(`จำไว้ในคลังความรู้แล้วครับ ${r.text}`, "bot"); }
+    else if (r.type === "askKb") {
+      const hit = NKb.search(kbAll(), r.q, 1)[0];
+      liveReply(!kbFiles().length ? "คลังความรู้ยังว่างอยู่ครับ นำเข้าไฟล์ได้ที่เมนู คลังความรู้"
+        : hit && hit.cover >= KB_CONTEXT ? `จากคลังความรู้ เรื่อง${hit.chunk.title} ${NKb.bestLines(hit.chunk.text, r.q)}` : `ไม่พบเรื่อง ${r.q} ในคลังความรู้ครับ`, "bot");
     } else if (r.type === "planToday") {
       liveReply("ได้ครับ ส่งให้เอไอวางแผนวันนี้ แผนจะอยู่ในหน้าเช้า", "bot");
       $("briefBtn").click();
@@ -366,12 +458,15 @@
     const rems = reminders().filter(r => r.on !== false && nextAt(r)).slice(0, 15).map(r => `${reminderWhen(r)} ${r.text}`).join("; ");
     const b = today().morning.brief;
     const td = today();
+    const kbHits = kbContext(text);
+    const kbText = kbHits.map(h => `[${h.chunk.title}]\n${h.chunk.text}`).join("\n---\n");
     return `คุณคือ N-assistant ผู้ช่วยส่วนตัวที่คุยกับผู้ใช้ด้วยเสียง ข้อความของผู้ใช้มาจากการแปลงเสียงเป็นข้อความ อาจสะกดผิดหรือขาดคำ ให้เดาความหมายที่ใกล้ที่สุด
 ตอนนี้: ${thDate(now)} เวลา ${hhmm(now)} (วันที่ ${todayDate()})
 ${contextText(todayDate())}
 แผนวันนี้: ${b ? `เป้าหลัก ${b.focus}; งาน ${(b.priorities || []).join("; ")}` : "(ยังไม่ได้ทำ)"}
 การเตือนที่ตั้งไว้: ${rems || "(ไม่มี)"}
 บันทึกวันนี้: งาน ${td.morning.tasks || "-"} | อัปเดต ${td.evening.notes || "-"} | ยกไปพรุ่งนี้ ${td.evening.tomorrow || "-"}
+${kbText ? `ข้อมูลจากคลังความรู้ของผู้ใช้ (ถ้าตอบได้จากส่วนนี้ ให้ตอบตามนี้และบอกว่ามาจากคลังความรู้):\n${kbText}` : ""}
 
 บทสนทนาก่อนหน้า:
 ${history || "(เริ่มบทสนทนาใหม่)"}
@@ -904,7 +999,7 @@ ${contextText(date)}
   const csvCell = v => `"${String(v ?? "").replace(/"/g, '""').replace(/\r?\n/g, " / ")}"`;
   function buildExport(kind) {
     const days = allDays();
-    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), days }, null, 2);
+    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), kb: kbFiles(), days }, null, 2);
     if (kind === "csv") {
       const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก AI"];
       const rows = days.map(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
@@ -948,6 +1043,11 @@ ${contextText(date)}
         if (A) A.setReminders(JSON.stringify(merged));
       }
       if (Array.isArray(data.notes)) { docs.notes = { list: data.notes }; migrateNotes(); } // backups from v1.0.23-1.0.25
+      if (Array.isArray(data.kb)) {
+        const have = new Set(kbFiles().map(f => f.id));
+        docs.kb = { files: [...kbFiles(), ...data.kb.filter(f => f && f.id && f.text && !have.has(f.id))], updatedAt: Date.now() };
+        kbChunks = null; renderKb();
+      }
       lsSet(LS_DOCS, docs); hydrate(); renderHistory(); schedulePrepSync();
       $("xStatus").textContent = `นำเข้าแล้ว ${n} วัน`;
     } catch { $("xStatus").textContent = "ไฟล์นี้ไม่ใช่ไฟล์สำรองของ N-assistant"; }
@@ -1176,7 +1276,7 @@ ${contextText(date)}
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
   migrateNotes(); migrateChat();
-  hydrate(); renderHistory(); setLiveMode(liveMode); showTab("live");
+  hydrate(); renderHistory(); renderKb(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

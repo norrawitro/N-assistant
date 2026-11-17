@@ -78,6 +78,13 @@ p{margin:0}
 .live-switch[data-state="thinking"]{animation:think 1.2s ease-in-out infinite}
 @keyframes think{50%{opacity:.75}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="thinking"]{animation:none}}
+.kblist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.kblist li{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.kblist li .kt{flex:1;min-width:0;overflow-wrap:anywhere}
+.kblist li .meta{display:block;font:600 .74rem var(--f-mono);color:var(--muted)}
+.kblist li button{border:0;background:transparent;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:0 4px}
+.kbhit{padding:10px;border-left:3px solid var(--accent);background:var(--bg);border-radius:8px;margin-top:8px;overflow-wrap:anywhere}
+.kbhit b{display:block;font-size:.84rem;color:var(--muted)}
 .convo li.bot{align-self:flex-start;background:var(--accent-soft);border:1px solid transparent}
 .convo li.thinking{opacity:.75;font-style:italic}
 .convo li.note{align-self:center;background:transparent;color:var(--warn);font-size:.86rem;text-align:center}
@@ -188,6 +195,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <button role="menuitem" type="button" data-go="evening">เย็น</button>
       <button role="menuitem" type="button" data-go="chatlive">พิมพ์คุยกับผู้ช่วย</button>
       <button role="menuitem" type="button" data-go="remind">เตือน</button>
+      <button role="menuitem" type="button" data-go="kb">คลังความรู้</button>
       <button role="menuitem" type="button" data-go="history">ประวัติ</button>
       <button role="menuitem" type="button" data-go="settings">ตั้งค่า</button>
     </div>
@@ -230,6 +238,33 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <p class="small muted">ที่จดจะลงในหน้าเช้าและหน้าเย็นของวันนั้น เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นที่ไหน</p>
     </div>
 </section>
+
+  <!-- KNOWLEDGE BASE -->
+  <section class="panel" id="p-kb" role="tabpanel" hidden>
+    <div class="card">
+      <h2>คลังความรู้</h2>
+      <p class="small muted">ใส่ไฟล์ข้อความ (.md หรือ .txt) เรื่องอะไรก็ได้ เช่น ข้อมูลบ้าน รถ สุขภาพ งาน แล้วถามใน Live ได้เลย ถ้าคำถามตรงกับในคลัง บอทจะตอบทันทีโดยไม่ต้องรอ AI ถ้าไม่ตรงพอ จะส่งส่วนที่เกี่ยวข้องให้ AI ช่วยตอบ ทุกอย่างเก็บไว้ในเครื่องนี้เท่านั้น</p>
+      <div class="row">
+        <label class="btn primary" for="kbFile">นำเข้าไฟล์</label>
+        <input type="file" id="kbFile" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
+        <button class="btn" id="kbNewBtn" type="button">พิมพ์เรื่องใหม่</button>
+      </div>
+      <div class="sec" id="kbNew" hidden>
+        <div class="field"><label for="kbTitle">ชื่อเรื่อง</label><input type="text" id="kbTitle" placeholder="เช่น ข้อมูลบ้าน" autocomplete="off"></div>
+        <div class="field"><label for="kbText">เนื้อหา</label><textarea id="kbText" rows="6" placeholder="ใช้ # หัวข้อ เพื่อแบ่งเป็นหัวข้อย่อยได้"></textarea></div>
+        <div class="row"><button class="btn primary" id="kbSave" type="button">บันทึกเรื่องนี้</button><button class="btn" id="kbCancel" type="button">ยกเลิก</button></div>
+      </div>
+      <p class="status" id="kbStatus"></p>
+    </div>
+    <div class="card">
+      <div class="row"><input type="text" id="kbQuery" placeholder="ลองค้นในคลัง เช่น เบอร์ช่างแอร์" autocomplete="off" style="flex:1;min-width:0"><button class="btn" id="kbSearch" type="button">ค้น</button></div>
+      <div id="kbResults"></div>
+    </div>
+    <div class="card">
+      <h3>เรื่องในคลัง <span class="muted small" id="kbCount"></span></h3>
+      <ol class="kblist" id="kbList"></ol>
+    </div>
+  </section>
 
   <nav role="tablist" aria-label="ส่วนของแอป" hidden>
     <button role="tab" id="tab-morning" aria-selected="true" data-tab="morning">เช้า</button>
@@ -534,6 +569,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   <button class="btn" id="ringStop" type="button">หยุดเสียงและเริ่มเลย</button>
 </div>
 
+<script src="kb.js"></script>
 <script src="bot.js"></script>
 <script src="app.js"></script>
 </body>
