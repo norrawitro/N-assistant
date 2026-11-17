@@ -100,14 +100,14 @@
     const ol = $("convo"); ol.textContent = "";
     if (!convo.length) { const li = document.createElement("li"); li.className = "convo-empty"; li.textContent = "ยังไม่มีบทสนทนา"; ol.appendChild(li); return; }
     convo.forEach(m => {
-      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : m.who === "note" ? "note" : "app";
-      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : m.who === "note" ? "แจ้ง" : "ตอบ"} · ${convoTime(m.t)}`;
+      const li = document.createElement("li"); li.className = m.who === "me" ? "me" : m.who === "note" ? "note" : m.who === "bot" ? "bot" : "app";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : m.who === "note" ? "แจ้ง" : m.who === "bot" ? "บอทตอบทันที" : "AI ตอบ"} · ${convoTime(m.t)}`;
       const p = document.createElement("span"); p.textContent = m.text;
       li.append(w, p); ol.appendChild(li);
     });
     if (liveJob) { // the AI is still working on the last thing that was said, whether Live is on or off
       const li = document.createElement("li"); li.className = "app thinking"; li.id = "convoThinking";
-      const w = document.createElement("span"); w.className = "who"; w.textContent = "ตอบ · กำลังคิด";
+      const w = document.createElement("span"); w.className = "who"; w.textContent = "AI · กำลังคิด" + (liveQueue.length ? ` · มีข้อมูลเพิ่มรอส่ง ${liveQueue.length} ข้อความ` : "");
       const p = document.createElement("span"); p.id = "convoThinkingText"; p.textContent = thinkingText();
       li.append(w, p); ol.appendChild(li);
     }
@@ -121,6 +121,7 @@
     sw.setAttribute("aria-checked", String(on)); sw.dataset.state = on ? state : "off";
     $("liveSub").textContent = !on ? "แตะเพื่อเปิด" : state === "speaking" ? "กำลังพูด" : state === "thinking" ? "กำลังคิด" : "กำลังฟัง";
     if (on && state === "thinking") message = thinkingText();
+    if (on && state === "listening" && liveJob) message = listeningWhileThinking();
     if (message) $("liveStatus").textContent = message;
     else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
     if (!on || state !== "listening") $("livePartial").textContent = "";
@@ -139,8 +140,47 @@
   handlers.liveHeard = t => {
     $("livePartial").textContent = "";
     addConvo("me", t);
-    if (liveMode === "ai") askLiveAI(t);
+    if (liveMode === "ai") handleHeard(t);
   };
+
+  // ---------- quick bot (rules, always there) in front of the AI ----------
+  let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
+  let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
+  let aiIntroDone = false; // the long "while you wait" hint is spoken once per app start
+  /** Decides at once what to do with what was heard: the bot answers, or the AI is asked while the bot keeps listening. */
+  function handleHeard(t) {
+    const r = window.NBot ? NBot.parse(t, { now: new Date(), pending: botPending, aiBusy: !!liveJob }) : null;
+    botPending = null;
+    if (r) { applyBot(r); return; }
+    if (liveJob) {
+      liveQueue.push(t);
+      liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
+      return;
+    }
+    if (!askLiveAI(t)) return; // it already said why the AI cannot be used
+    if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอส่งให้เอไอคิดนะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
+    else liveReply("ขอส่งให้เอไอคิดสักครู่นะครับ", "bot");
+  }
+  function applyBot(r) {
+    if (r.type === "say") liveReply(r.say, "bot");
+    else if (r.type === "ask") { botPending = r.pending; liveReply(r.say, "bot"); }
+    else if (r.type === "reminder") {
+      const rr = addReminder(r.text, r.time, r.repeat, r.date);
+      liveReply(`ตั้งเตือน ${reminderWhen(rr)} เรื่อง ${rr.text} แล้วครับ`, "bot");
+    } else if (r.type === "listReminders") {
+      const list = reminders().filter(x => x.on !== false && nextAt(x)).sort((a, b) => nextAt(a) - nextAt(b)).slice(0, 3);
+      liveReply(list.length ? `การเตือนที่ใกล้ที่สุด ${list.map(x => `${reminderWhen(x)} ${x.text}`).join(" และ ")} ครับ` : "ตอนนี้ยังไม่มีการเตือนที่ตั้งไว้ครับ", "bot");
+    } else if (r.type === "open") { liveReply(r.say, "bot"); showTab(r.tab); }
+    else if (r.type === "aiStatus") liveReply(`เอไอคิดมาแล้ว ${Math.floor((Date.now() - liveJob.at) / 1000)} วินาที ยังไม่เสร็จครับ`, "bot");
+    else if (r.type === "cancel") {
+      abandonedLive.add(liveJob.id); liveQueue = []; clearPending("live", "live"); stopThinking();
+      liveReply("ยกเลิกคำถามที่ส่งให้เอไอแล้วครับ", "bot");
+    } else if (r.type === "stop") {
+      addConvo("bot", "ปิด Live แล้วครับ");
+      if (A && A.liveStop) A.liveStop();
+      setLive(false, "off", "ปิด Live แล้ว");
+    }
+  }
 
   // ---------- Live, round 2: the AI decides how to react ----------
   const LIVE_MODE_KEY = "nLiveMode";
@@ -154,7 +194,7 @@
     if (A && A.liveMode) A.liveMode(liveMode);
     if ($("liveSwitch").getAttribute("aria-checked") !== "true") {
       $("liveStatus").textContent = liveMode === "ai"
-        ? `เปิด Live แล้วพูดภาษาไทย AI (${aiName()}) จะคิดว่าจะตอบหรือทำอะไรให้`
+        ? `เปิด Live แล้วพูดภาษาไทย เรื่องง่ายๆ บอทตอบทันที เรื่องอื่นส่งให้ AI (${aiName()})`
         : "เปิด Live แล้วพูดภาษาไทย แอปจะพูดสิ่งที่ได้ยินกลับ (ไม่ใช้ AI)";
     }
   }
@@ -176,6 +216,7 @@
     return `กำลังคิด… ${sec} วินาที${slow}`;
   }
   const abandonedLive = new Set(); // answers that arrive after the 5-minute timeout are not shown twice
+  const listeningWhileThinking = () => `กำลังฟัง… พูดได้เลย (เอไอกำลังคิด ${liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0} วินาที)`;
   function stopThinking() {
     if (!liveJob) return;
     clearTimeout(liveJob.timer); clearInterval(liveJob.tick); liveJob = null;
@@ -198,7 +239,10 @@
   });
   function livePrompt(text) {
     const now = new Date();
-    const history = convo.filter(m => m.who !== "note").slice(-9, -1).map(m => `${m.who === "me" ? "ผู้ใช้" : "ผู้ช่วย"}: ${m.text}`).join("\n");
+    // Only the person and the AI; the quick bot's instant answers and notes are left out to keep the prompt short.
+    let past = convo.filter(m => m.who === "me" || m.who === "app");
+    if (past.length && past[past.length - 1].who === "me" && past[past.length - 1].text === text) past = past.slice(0, -1);
+    const history = past.slice(-8).map(m => `${m.who === "me" ? "ผู้ใช้" : "ผู้ช่วย"}: ${m.text}`).join("\n");
     const rems = reminders().filter(r => r.on !== false && nextAt(r)).slice(0, 15).map(r => `${reminderWhen(r)} ${r.text}`).join("; ");
     const b = today().morning.brief;
     return `คุณคือ N-assistant ผู้ช่วยส่วนตัวที่คุยกับผู้ใช้ด้วยเสียง ข้อความของผู้ใช้มาจากการแปลงเสียงเป็นข้อความ อาจสะกดผิดหรือขาดคำ ให้เดาความหมายที่ใกล้ที่สุด
@@ -217,31 +261,42 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
 - reminders = การเตือนที่ต้องตั้งใหม่ (เฉพาะเมื่อผู้ใช้ขอให้เตือน ไม่อย่างนั้นให้เป็น []) แต่ละรายการมี text, time ("HH:MM" 24 ชั่วโมง), date ("YYYY-MM-DD" คำนวณจากวันที่ตอนนี้), repeat ("once" | "daily" | "weekdays" | "weekly") ถ้าตั้งเตือนให้บอกวันเวลาที่ตั้งใน reply
 - open = หน้าที่จะเปิดให้ผู้ใช้ เฉพาะเมื่อผู้ใช้ขอให้เปิด: "morning" (แผนตอนเช้า), "evening" (บันทึกตอนเย็น), "chat" (แชทผู้ช่วย), "remind" (รายการเตือน), "history" (ประวัติ), "settings" (ตั้งค่า) ไม่อย่างนั้นให้เป็น ""`;
   }
-  async function askLiveAI(text) {
+  /** Sends what was said to the AI. Returns false (after saying why) when the AI cannot be used. */
+  function askLiveAI(text) {
     stopThinking();
     let job;
     try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
-    catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return; }
+    catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return false; }
     liveJob = { id: job.id, at: Date.now() };
     liveJob.tick = setInterval(() => {
-      if ($("liveSwitch").dataset.state === "thinking") $("liveStatus").textContent = thinkingText();
+      const st = $("liveSwitch").dataset.state;
+      if (st === "thinking") $("liveStatus").textContent = thinkingText();
+      else if (st === "listening") $("liveStatus").textContent = listeningWhileThinking();
       const t = $("convoThinkingText"); if (t) t.textContent = thinkingText();
     }, 1000);
     liveJob.timer = setTimeout(() => {
       if (!liveJob || liveJob.id !== job.id) return;
       abandonedLive.add(job.id);
       stopThinking(); clearPending("live", "live");
+      liveQueue = [];
       liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
     }, settings().provider === "githubmd" ? LIVE_TIMEOUT_MS + 90 * 1000 : LIVE_TIMEOUT_MS); // the file channel waits 5 min itself
-    $("liveStatus").textContent = thinkingText();
     renderConvo();
-    await startJob(job);
+    startJob(job);
+    return true;
+  }
+  /** After an AI answer: what was said meanwhile goes to the AI as the next question. */
+  function sendQueued() {
+    if (!liveQueue.length || liveJob) return;
+    const more = liveQueue.join(" "); liveQueue = [];
+    if (askLiveAI("ข้อมูลเพิ่มเติมจากผู้ใช้ (พูดระหว่างรอคำตอบก่อนหน้า): " + more)) addConvo("note", "ส่งข้อมูลเพิ่มให้ AI แล้ว");
   }
   function applyLiveResult(res) {
     if (abandonedLive.has(res.id)) return; // already reported as "no answer in 5 minutes"
     if (liveJob && res.id === liveJob.id) stopThinking();
     // Otherwise it belongs to an earlier question (for example from before the app was reopened): still log it.
     if (!res.ok) {
+      liveQueue = [];
       liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
       return;
     }
@@ -267,6 +322,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     liveReply(reply);
     if (made.length) addConvo("note", "ตั้งการเตือนแล้ว: " + made.join(", "));
     if (open && TABS.includes(open)) showTab(open);
+    sendQueued();
   }
   handlers.liveSpoke = t => addConvo("app", t);
 
@@ -867,12 +923,15 @@ ${contextText(date)}
     const t = termuxInfo();
     if (!t) { $("termuxState").textContent = "ใช้ได้เฉพาะในแอปบนมือถือ"; return; }
     $("tsInstall").classList.toggle("done", t.installed); $("tsPerm").classList.toggle("done", t.permitted);
-    $("termuxPerm").hidden = t.permitted || !t.installed;
+    const unsupported = t.installed && t.supported === false;
+    $("termuxPerm").hidden = t.permitted || !t.installed || unsupported;
+    $("termuxStart").hidden = unsupported;
     $("termuxState").textContent = !t.installed ? "ยังไม่พบแอป Termux ในเครื่อง ทำตามขั้นตอนด้านล่าง"
+      : unsupported ? "Termux ในเครื่องนี้ไม่ยอมให้แอปอื่นสั่งงาน (น่าจะเป็นตัวจาก Play Store) แอปจึงเปิด Ollama ให้เองไม่ได้ ให้เปิด Termux แล้วพิมพ์ termux-wake-lock; ollama serve ทิ้งไว้ก่อนใช้ AI ถ้าอยากให้เปิดเอง ต้องเปลี่ยนไปใช้ Termux จาก F-Droid หรือ GitHub"
       : !t.permitted ? "พบ Termux แล้ว แต่แอปนี้ยังไม่ได้รับสิทธิ์สั่งงาน Termux"
       : "พร้อมแล้ว แอปจะเปิด Ollama ใน Termux ให้เองเมื่อต้องใช้";
   }
-  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
+  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok === "unsupported" ? "Termux ตัวนี้ไม่มีสิทธิ์นี้ให้ขอ (ดูข้อความด้านบน)" : ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
   $("termuxPerm").addEventListener("click", () => A && A.askTermuxPermission());
   $("termuxOpen").addEventListener("click", () => A && A.openTermux());
   const sleep = ms => new Promise(r => setTimeout(r, ms));

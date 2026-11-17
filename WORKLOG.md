@@ -200,3 +200,70 @@ Owner phone notes from the same session:
 - Thinking row shown, and still shown after Live is switched off.
 - The late answer is logged and not spoken, and the thinking row is removed.
 - The earlier tests still pass with no errors.
+
+## 2026-11-17: say clearly when Termux cannot be commanded
+
+**Request:** relayed by Manager. Continue what is left without waiting for the owner. Both items Manager listed were already released:
+- the Live-off answer: v1.0.18;
+- the MD-on-GitHub channel: v1.0.12.
+
+**What remained:** on the owner's phone, "ขอสิทธิ์สั่ง Termux" did nothing. That Termux build does not offer the `RUN_COMMAND` permission to other apps, so Android shows no prompt, and the permission is missing from the app's settings.
+
+**Fix:**
+- **Detecting the case:** the app checks whether Android knows the permission at all (`getPermissionInfo`).
+- **When it does not, Settings:**
+  - say that this Termux, probably the Play Store one, does not allow other apps to give it commands;
+  - say to start `termux-wake-lock; ollama serve` by hand;
+  - say that switching to Termux from F-Droid or GitHub enables auto-start;
+  - hide the permission and start buttons.
+- **The permission button itself** now explains this instead of staying silent.
+
+**Checks:** a browser test with a mock bridge shows the message and the hidden buttons. CI compiles the Java.
+
+**Not tested** on the phone.
+
+## 2026-11-17: a quick rule-based bot in front of the AI
+
+**Owner's request:** a bot that is always there and answers at once with plain logic. Simple questions get an instant answer; complex ones go to the AI. While the AI works on its first answer, the bot keeps talking with the owner and can ask for more information.
+
+### What was built
+- **`bot.js` (new, rules only, no AI).** It answers at once:
+  - **Time and date:** "กี่โมง", "วันนี้วันอะไร", "พรุ่งนี้วันอะไร".
+  - **Reminders:** it reads Thai times ("8 โมง", "แปดโมง", "บ่าย 3", "2 ทุ่มครึ่ง", "14:45", "อีก 20 นาที"), days (วันนี้, พรุ่งนี้, มะรืน) and repeats (ทุกวัน, ทุกสัปดาห์, จันทร์ถึงศุกร์).
+    - If the time or the subject is missing, the bot asks for it ("ให้เตือนกี่โมง", "ให้เตือนเรื่องอะไร") and uses the next thing said. "ยกเลิก" drops it.
+    - A reminder sentence that needs thought ("ควร…", "ตอนไหนดี", "แนะนำ…") goes to the AI instead.
+  - **Other instant answers:** list the next reminders, open a page, small sums ("12 คูณ 4"), greetings and thanks, "ทำอะไรได้บ้าง", "ได้ยินไหม".
+  - **Control:** "หยุด" turns Live off. While the AI is busy, "เสร็จหรือยัง" gives the elapsed time and "ยกเลิก" drops the AI question.
+  - Anything else returns null and goes to the AI.
+- **Live flow (page):**
+  - The bot is tried first. If it has no rule, the question goes to the AI and the bot says so at once.
+  - **The microphone stays open while the AI thinks.** Before, it was closed until the AI answered.
+  - Simple questions asked meanwhile are answered by the bot.
+  - Other things said meanwhile are kept as extra information. After the first AI answer they are sent to the AI as the next question, with the first answer in the history.
+  - When the AI answer arrives it is spoken, even if the app was listening at that moment.
+- **Voice loop (`LiveVoice`):**
+  - Speaking can now start at any time. It stops the recognizer first, so the app does not hear itself, and queues behind speech still in progress.
+  - Listening resumes when all speech has finished.
+  - If the page does not answer within 4 s, listening resumes anyway.
+- **Conversation log:** entries are labelled "บอทตอบทันที" or "AI ตอบ". The thinking row shows how many extra messages are waiting.
+- **AI prompt:** the history now holds only the person and the AI. The bot's instant answers are left out, which keeps the prompt short.
+- **Mode button:** renamed "บอท + AI". "พูดซ้ำ (ทดสอบ)" is unchanged.
+
+### Checks
+- **Bot rules:** 34 cases in Node, all pass:
+  - times, days and repeats;
+  - missing time, then answered;
+  - missing subject, then answered;
+  - cancel, sums, pages;
+  - sentences that must go to the AI.
+- **Browser test with a mock bridge:** all of these work, with no errors and no sideways scrolling.
+  - an instant answer with no AI job;
+  - a reminder in two turns;
+  - a complex question sent to the AI;
+  - the status line while listening;
+  - a bot answer while the AI is busy;
+  - extra information queued, then sent as a follow-up with the first answer in its history;
+  - cancel and stop.
+- **Earlier tests:** three had to be changed, because they used "สวัสดี" and "วันนี้วันอะไร", which the bot now answers itself. With AI-type sentences they pass.
+- **Not tested on the phone:** hearing while the AI thinks, and speaking the AI answer in the middle of listening.
+- **Not released.** The owner stopped the last merge, so this stays on the branch (PR #9) until they say to release.

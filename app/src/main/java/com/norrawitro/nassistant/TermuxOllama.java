@@ -32,6 +32,19 @@ final class TermuxOllama {
         }
     }
 
+    /**
+     * Whether the installed Termux offers the RUN_COMMAND permission to other apps at all. Some builds (for example the
+     * Play Store one) do not; then Android never shows a prompt and the permission is missing from the app's settings.
+     */
+    static boolean supportsRunCommand(Context c) {
+        try {
+            c.getPackageManager().getPermissionInfo(PERMISSION, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
     static boolean permitted(Context c) {
         return c.checkSelfPermission(PERMISSION) == PackageManager.PERMISSION_GRANTED;
     }
