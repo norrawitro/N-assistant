@@ -267,3 +267,32 @@ Owner phone notes from the same session:
 - **Earlier tests:** three had to be changed, because they used "สวัสดี" and "วันนี้วันอะไร", which the bot now answers itself. With AI-type sentences they pass.
 - **Not tested on the phone:** hearing while the AI thinks, and speaking the AI answer in the middle of listening.
 - **Not released.** The owner stopped the last merge, so this stays on the branch (PR #9) until they say to release.
+
+## 2026-11-17 (later): notes in the quick bot
+
+**Owner's request:** make the answering algorithm smarter: it should take notes and be able to say what has been noted.
+
+### What was built (no AI needed)
+- **Saying "จดว่า…", "จดบันทึกว่า…", "บันทึกว่า…", "จำไว้ว่า…" or "ช่วยจดไว้หน่อยว่า…"** saves a note. The bot answers "จดแล้วครับ …".
+  - **No text after it** ("จดบันทึกหน่อย"): the bot asks "จะให้จดว่าอะไรครับ" and saves the next thing said. "ยกเลิก" drops it.
+- **Saying "มีอะไรจดไว้บ้าง", "จดอะไรไว้บ้าง" or "อ่านบันทึก"** makes the bot say how many notes there are, then read the latest 5.
+- **Saying "หาบันทึกเรื่อง…", "มีบันทึกเรื่อง…ไหม" or "เคยจดเรื่อง…ไว้ไหม"** searches the notes. The bot reads up to 3 matches, with when each was noted. If nothing matches, it says so.
+- **Saying "ลบบันทึกล่าสุด"** removes the newest note.
+- **Live screen card "สิ่งที่จดไว้":**
+  - a text box to type a note;
+  - the list of notes, newest first, each with its time and a × button to delete it (asks first).
+- **Storage:** notes live with the other app data on the phone. They are included in the JSON backup, in its import (merged, no duplicates), and in the Markdown export.
+- **AI:** the latest 15 notes go into the AI prompt, so the AI can use them when they are relevant.
+- **"ทำอะไรได้บ้าง":** the answer now mentions notes.
+
+### Checks
+- **Bot rules (Node):** 21 note cases pass, including cases that must still go elsewhere: "บันทึกวันนี้เป็นอย่างไรบ้าง" goes to the AI, and reminders still go to reminders. The earlier 34 cases still pass.
+- **Browser test with a mock bridge:**
+  - notes saved by voice, including the two-step ask and answer;
+  - list, search with a match, search with no match;
+  - delete the latest note;
+  - type a note, delete one from the list;
+  - notes present in the AI prompt and in the JSON export;
+  - notes still there after a reload.
+  - No errors and no sideways scrolling. The earlier bot and AI test still passes.
+- **Not tested** on the phone.

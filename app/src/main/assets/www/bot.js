@@ -8,6 +8,8 @@
  *   { type: "ask", say, pending }                          needs more information; pass `pending` back in ctx next time
  *   { type: "open", tab, say }                             open a page
  *   { type: "listReminders" } | { type: "aiStatus" } | { type: "cancel" } | { type: "stop" }
+ *   { type: "note", text }        save a note        { type: "listNotes" }        read the latest notes
+ *   { type: "findNotes", q }      search the notes   { type: "deleteLastNote" }   remove the newest note
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
 (function (root) {
@@ -98,6 +100,38 @@
   ];
   const OPS = { "บวก": "+", "+": "+", "ลบ": "-", "-": "-", "คูณ": "*", "x": "*", "×": "*", "*": "*", "หาร": "/", "/": "/", "÷": "/" };
 
+  /** Removes polite endings and fillers around the text of a note. */
+  function cleanNote(s) {
+    return String(s).replace(/^(ไว้ว่า|ด้วยว่า|หน่อยว่า|ให้หน่อยว่า|ให้ว่า|ว่า)\s*/, "")
+      .replace(/\s*(ด้วย|หน่อย|นะ|น่ะ|ครับ|ค่ะ|คะ|จ้ะ)+$/, "").trim();
+  }
+
+  function parseNote(raw, t) {
+    // reading the notes
+    if (/(มี|ดู|ขอดู|อ่าน|เปิด|ทวน).{0,8}(อะไร)?.{0,4}(ที่)?(จด|บันทึกย่อ|โน้ต|โน๊ต)(ไว้)?(บ้าง|ทั้งหมด)?|(จด|โน้ต|โน๊ต)อะไรไว้(บ้าง)?|บันทึกอะไรไว้(บ้าง)?|^(อ่าน|ดู)(บันทึก|โน้ต|โน๊ต)$/.test(t)
+        && !/(จด|บันทึก)(ว่า|ไว้ว่า)/.test(t)) {
+      const q = t.match(/(?:เรื่อง|เกี่ยวกับ)\s*(.+?)(?:\s*(?:บ้าง|ไหม|มั้ย|หรือเปล่า|ไว้))*$/);
+      return q && q[1] ? { type: "findNotes", q: cleanNote(q[1]) } : { type: "listNotes" };
+    }
+    // searching
+    let m = t.match(/^(?:ช่วย)?(?:หา|ค้น|ค้นหา)(?:ใน)?(?:บันทึก|โน้ต|โน๊ต|ที่จด)(?:ไว้)?\s*(?:เรื่อง|เกี่ยวกับ|ว่า)?\s*(.+)$/)
+      || t.match(/^มี(?:บันทึก|โน้ต|โน๊ต|ที่จด)(?:ไว้)?\s*(?:เรื่อง|เกี่ยวกับ)\s*(.+?)\s*(?:ไว้)?\s*(?:ไหม|มั้ย|หรือเปล่า|รึเปล่า|บ้างไหม)\s*(?:ครับ|ค่ะ|คะ)?$/)
+      || t.match(/^(?:เคย)?(?:จด|บันทึก)(?:เรื่อง|เกี่ยวกับ)\s*(.+?)\s*(?:ไว้)?\s*(?:ไหม|มั้ย|หรือเปล่า|รึเปล่า|บ้างไหม)\s*(?:ครับ|ค่ะ|คะ)?$/);
+    if (m && cleanNote(m[1])) return { type: "findNotes", q: cleanNote(m[1]) };
+    // deleting the last one
+    if (/^(ลบ|ยกเลิก)(บันทึก|โน้ต|โน๊ต|ที่จด)(ล่าสุด|อันล่าสุด|เมื่อกี้|อันสุดท้าย)/.test(t)) return { type: "deleteLastNote" };
+    // writing a note
+    m = raw.match(/^(?:ช่วย|รบกวน)?\s*(?:จด(?:บันทึก)?|บันทึก(?:ย่อ)?|โน้ต|โน๊ต|จำ|เขียน)(?:ไว้|ลงไป|ให้หน่อย|ให้|หน่อย|ด้วย)*\s*(?:ว่า|ด้วยว่า|หน่อยว่า|เรื่อง)\s*(.*)$/);
+    if (m) {
+      const text = cleanNote(m[1]);
+      return text ? { type: "note", text } : { type: "ask", say: "จะให้จดว่าอะไรครับ", pending: { kind: "note" } };
+    }
+    if (/^(?:ช่วย|รบกวน)?\s*(?:จด(?:บันทึก)?|บันทึกย่อ|โน้ต|โน๊ต)\s*(?:ไว้|ให้|หน่อย|ด้วย|ที|ครับ|ค่ะ)*\s*$/.test(t)) {
+      return { type: "ask", say: "จะให้จดว่าอะไรครับ", pending: { kind: "note" } };
+    }
+    return null;
+  }
+
   function parse(text, ctx) {
     const now = (ctx && ctx.now) || new Date();
     const raw = String(text || "").trim().replace(/\s+/g, " ");
@@ -119,6 +153,16 @@
       if (filled) return finishReminder(p, now);
       return { type: "ask", say: pending.time ? "ยังไม่ได้ยินว่าให้เตือนเรื่องอะไร พูดอีกครั้ง หรือพูดว่ายกเลิก" : "ยังไม่ได้ยินเวลา บอกเวลา เช่น 8 โมง หรือพูดว่ายกเลิก", pending };
     }
+
+    if (pending && pending.kind === "note") {
+      if (/^(ยกเลิก|ไม่เอา|ไม่ต้อง|ช่างมัน)/.test(t)) return { type: "say", say: "ไม่จดแล้วครับ" };
+      const text = cleanNote(raw);
+      return text ? { type: "note", text } : { type: "ask", say: "ยังไม่ได้ยิน จะให้จดว่าอะไรครับ", pending };
+    }
+
+    // ----- notes: "จดว่า…", "บันทึกว่า…", "จำไว้ว่า…"; "มีอะไรจดไว้บ้าง"; "หาบันทึกเรื่อง…"; "ลบบันทึกล่าสุด" -----
+    const note = parseNote(raw, t);
+    if (note) return note;
 
     // ----- control -----
     if (short && /^(หยุด|พอแล้ว|เลิกฟัง|ปิด ?(live|ไลฟ์|ไมค์))/.test(t)) return { type: "stop" };
@@ -163,7 +207,7 @@
     if (short && /ขอบคุณ|ขอบใจ|แต๊งกิ้ว/.test(t)) return { type: "say", say: "ยินดีครับ" };
     if (short && /(คุณ|เธอ|นาย)(คือ|เป็น)ใคร|ชื่ออะไร/.test(t)) return { type: "say", say: "ผมคือ N-assistant ผู้ช่วยส่วนตัวของคุณครับ" };
     if (/ทำอะไรได้(บ้าง)?|ช่วยอะไรได้/.test(t) && t.length <= 30) {
-      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน บอกรายการเตือน คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
+      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน จดบันทึก อ่านและค้นสิ่งที่จดไว้ คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
     }
     if (short && /^(ได้ยิน(ไหม|มั้ย)|ทดสอบ|เทส)/.test(t)) return { type: "say", say: "ได้ยินชัดเจนครับ" };
 
