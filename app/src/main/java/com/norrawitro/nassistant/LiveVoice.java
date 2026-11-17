@@ -43,7 +43,12 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     private int utterance;
     /** true: say back what was heard (round 1). false: the page asks the AI and calls say() with the answer. */
     private boolean echo = true;
+    /** Heard something and waiting for the page to say what to do (answer() is expected within moments). */
     private boolean thinking;
+    /** Utterances handed to the text-to-speech engine that have not finished yet. */
+    private int speaking;
+    private final Runnable listenTask = this::listen;
+    private final Runnable pageTimeout = () -> { if (thinking) { thinking = false; relisten(0); } };
 
     LiveVoice(Context ctx, Events ev) {
         this.ctx = ctx.getApplicationContext();
@@ -58,8 +63,9 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     void answer(String text) {
         if (!on) return;
         thinking = false;
+        main.removeCallbacks(pageTimeout);
         String t = text == null ? "" : text.trim();
-        if (t.isEmpty()) { relisten(200); return; }
+        if (t.isEmpty()) { if (speaking == 0) relisten(200); return; }
         say(t);
     }
 
@@ -95,6 +101,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         tts = null;
         waitingToSay = null;
         thinking = false;
+        speaking = 0;
         ev.state("off", "");
     }
 
@@ -116,16 +123,22 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     private void relisten(long delayMs) {
-        if (!on || thinking) return;
-        main.postDelayed(this::listen, delayMs);
+        if (!on || thinking || speaking > 0) return;
+        main.removeCallbacks(listenTask);
+        main.postDelayed(listenTask, delayMs);
     }
 
     private void say(String text) {
         if (!on) return;
         if (!ttsReady) { waitingToSay = text; return; }
+        // The page may speak at any moment (for example when the AI's answer arrives while the microphone is open):
+        // stop listening first so the app does not hear itself, and queue behind anything still being spoken.
+        main.removeCallbacks(listenTask);
+        try { if (rec != null) rec.cancel(); } catch (Exception ignored) {}
         ev.state("speaking", "กำลังพูด…");
         String id = "u" + (++utterance);
-        int r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
+        int r = tts.speak(text, speaking > 0 ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH, null, id);
+        if (r == TextToSpeech.SUCCESS) speaking++;
         if (r != TextToSpeech.SUCCESS) {
             ev.state("error", "พูดออกเสียงไม่ได้ ตรวจการตั้งค่าเสียงพูด (TTS) ของเครื่อง");
             relisten(800);
@@ -135,6 +148,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     private void afterSpeaking() {
+        if (speaking > 0) speaking--;
         relisten(250);
     }
 
@@ -175,9 +189,11 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         if (echo) {
             say(text); // round 1: say back exactly what was heard
         } else {
-            // The page sends the text to the AI; the microphone stays closed until answer() is called.
+            // The page decides at once what to say (its quick bot, or "one moment" while the AI works) and calls
+            // answer(). If it does not, listen again after a few seconds rather than staying deaf.
             thinking = true;
-            ev.state("thinking", "กำลังคิด…");
+            main.removeCallbacks(pageTimeout);
+            main.postDelayed(pageTimeout, 4000);
         }
     }
 
@@ -190,6 +206,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     @Override
     public void onError(int error) {
         if (!on) return;
+        if (speaking > 0) return; // listening was cancelled on purpose so the app can speak
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:

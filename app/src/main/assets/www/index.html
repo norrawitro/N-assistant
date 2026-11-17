@@ -78,6 +78,7 @@ p{margin:0}
 .live-switch[data-state="thinking"]{animation:think 1.2s ease-in-out infinite}
 @keyframes think{50%{opacity:.75}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="thinking"]{animation:none}}
+.convo li.bot{align-self:flex-start;background:var(--accent-soft);border:1px solid transparent}
 .convo li.thinking{opacity:.75;font-style:italic}
 .convo li.note{align-self:center;background:transparent;color:var(--warn);font-size:.86rem;text-align:center}
 .live-partial{min-height:1.5em;text-align:center;color:var(--muted);font-size:.95rem}
@@ -216,7 +217,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <span>LIVE<span class="sw-sub" id="liveSub">แตะเพื่อเปิด</span></span>
       </button>
       <div class="seg" role="group" aria-label="วิธีตอบ">
-        <button type="button" id="modeAi" aria-pressed="true">ตอบด้วย AI</button>
+        <button type="button" id="modeAi" aria-pressed="true">บอท + AI</button>
         <button type="button" id="modeEcho" aria-pressed="false">พูดซ้ำ (ทดสอบ)</button>
       </div>
       <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย</p>
@@ -532,6 +533,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   <button class="btn" id="ringStop" type="button">หยุดเสียงและเริ่มเลย</button>
 </div>
 
+<script src="bot.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
