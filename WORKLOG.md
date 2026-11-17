@@ -200,3 +200,24 @@ Owner phone notes from the same session:
 - Thinking row shown, and still shown after Live is switched off.
 - The late answer is logged and not spoken, and the thinking row is removed.
 - The earlier tests still pass with no errors.
+
+## 2026-11-17: say clearly when Termux cannot be commanded
+
+**Request:** relayed by Manager. Continue what is left without waiting for the owner. Both items Manager listed were already released:
+- the Live-off answer: v1.0.18;
+- the MD-on-GitHub channel: v1.0.12.
+
+**What remained:** on the owner's phone, "ขอสิทธิ์สั่ง Termux" did nothing. That Termux build does not offer the `RUN_COMMAND` permission to other apps, so Android shows no prompt, and the permission is missing from the app's settings.
+
+**Fix:**
+- **Detecting the case:** the app checks whether Android knows the permission at all (`getPermissionInfo`).
+- **When it does not, Settings:**
+  - say that this Termux, probably the Play Store one, does not allow other apps to give it commands;
+  - say to start `termux-wake-lock; ollama serve` by hand;
+  - say that switching to Termux from F-Droid or GitHub enables auto-start;
+  - hide the permission and start buttons.
+- **The permission button itself** now explains this instead of staying silent.
+
+**Checks:** a browser test with a mock bridge shows the message and the hidden buttons. CI compiles the Java.
+
+**Not tested** on the phone.

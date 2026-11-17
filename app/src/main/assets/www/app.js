@@ -867,12 +867,15 @@ ${contextText(date)}
     const t = termuxInfo();
     if (!t) { $("termuxState").textContent = "ใช้ได้เฉพาะในแอปบนมือถือ"; return; }
     $("tsInstall").classList.toggle("done", t.installed); $("tsPerm").classList.toggle("done", t.permitted);
-    $("termuxPerm").hidden = t.permitted || !t.installed;
+    const unsupported = t.installed && t.supported === false;
+    $("termuxPerm").hidden = t.permitted || !t.installed || unsupported;
+    $("termuxStart").hidden = unsupported;
     $("termuxState").textContent = !t.installed ? "ยังไม่พบแอป Termux ในเครื่อง ทำตามขั้นตอนด้านล่าง"
+      : unsupported ? "Termux ในเครื่องนี้ไม่ยอมให้แอปอื่นสั่งงาน (น่าจะเป็นตัวจาก Play Store) แอปจึงเปิด Ollama ให้เองไม่ได้ ให้เปิด Termux แล้วพิมพ์ termux-wake-lock; ollama serve ทิ้งไว้ก่อนใช้ AI ถ้าอยากให้เปิดเอง ต้องเปลี่ยนไปใช้ Termux จาก F-Droid หรือ GitHub"
       : !t.permitted ? "พบ Termux แล้ว แต่แอปนี้ยังไม่ได้รับสิทธิ์สั่งงาน Termux"
       : "พร้อมแล้ว แอปจะเปิด Ollama ใน Termux ให้เองเมื่อต้องใช้";
   }
-  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
+  handlers.termuxPerm = ok => { renderTermux(); $("termuxStatus").textContent = ok === "unsupported" ? "Termux ตัวนี้ไม่มีสิทธิ์นี้ให้ขอ (ดูข้อความด้านบน)" : ok ? "ได้รับสิทธิ์แล้ว" : "ยังไม่ได้รับสิทธิ์ ถ้าไม่มีหน้าต่างขออนุญาตขึ้น ให้เปิด ตั้งค่าเครื่อง → แอป → N-assistant → สิทธิ์ → สั่งงาน Termux"; };
   $("termuxPerm").addEventListener("click", () => A && A.askTermuxPermission());
   $("termuxOpen").addEventListener("click", () => A && A.openTermux());
   const sleep = ms => new Promise(r => setTimeout(r, ms));

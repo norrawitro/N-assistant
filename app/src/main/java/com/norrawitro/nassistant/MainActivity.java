@@ -402,6 +402,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String termuxStatus() {
             return "{\"installed\":" + TermuxOllama.installed(MainActivity.this)
+                    + ",\"supported\":" + TermuxOllama.supportsRunCommand(MainActivity.this)
                     + ",\"permitted\":" + TermuxOllama.permitted(MainActivity.this) + "}";
         }
 
@@ -415,6 +416,7 @@ public class MainActivity extends Activity {
         public void askTermuxPermission() {
             main.post(() -> {
                 if (TermuxOllama.permitted(MainActivity.this)) emit("termuxPerm", "true");
+                else if (!TermuxOllama.supportsRunCommand(MainActivity.this)) emit("termuxPerm", "\"unsupported\"");
                 else requestPermissions(new String[]{TermuxOllama.PERMISSION}, REQ_TERMUX);
             });
         }
