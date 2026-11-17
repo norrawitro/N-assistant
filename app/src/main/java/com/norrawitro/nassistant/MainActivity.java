@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -33,6 +34,9 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int REQ_SAVE = 7001;
+    private static final int REQ_FILE = 7005;
+    /** The page's file input waiting for the system file picker. */
+    private ValueCallback<Uri[]> fileCallback;
     private static final int REQ_NOTIF = 7002;
     private static final int REQ_MIC = 7003;
     private static final int REQ_TERMUX = 7004;
@@ -90,6 +94,23 @@ public class MainActivity extends Activity {
                         .setPositiveButton("ตกลง", (d, w) -> result.confirm())
                         .setOnCancelListener(d -> result.confirm())
                         .show();
+                return true;
+            }
+
+            /** Opens the system file picker for the page's file inputs (knowledge files, JSON backup import). */
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+                i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                try {
+                    startActivityForResult(i, REQ_FILE);
+                } catch (Exception e) {
+                    fileCallback = null;
+                    callback.onReceiveValue(null);
+                    return false;
+                }
                 return true;
             }
         });
@@ -222,6 +243,22 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_FILE) {
+            ValueCallback<Uri[]> cb = fileCallback;
+            fileCallback = null;
+            if (cb == null) return;
+            Uri[] picked = null;
+            if (resultCode == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    picked = new Uri[data.getClipData().getItemCount()];
+                    for (int k = 0; k < picked.length; k++) picked[k] = data.getClipData().getItemAt(k).getUri();
+                } else if (data.getData() != null) {
+                    picked = new Uri[]{data.getData()};
+                }
+            }
+            cb.onReceiveValue(picked);
+            return;
+        }
         if (requestCode != REQ_SAVE) return;
         String content = pendingSave;
         pendingSave = null;

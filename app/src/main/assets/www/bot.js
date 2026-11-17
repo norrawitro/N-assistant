@@ -10,6 +10,8 @@
  *   { type: "listReminders" } | { type: "aiStatus" } | { type: "cancel" } | { type: "stop" }
  *   { type: "note", text }        save a note        { type: "listNotes" }        read the latest notes
  *   { type: "findNotes", q }      search the notes   { type: "deleteLastNote" }   remove the newest note
+ *   { type: "learn", text }       add to the knowledge base   { type: "askKb", q }   look something up in it
+ *   { type: "dayTasks", text }    add to today's tasks   { type: "planToday" }    ask the AI for today's plan
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
 (function (root) {
@@ -95,7 +97,7 @@
   }
 
   const TABS = [
-    [/ตั้งค่า|เซ็ตติ้ง|setting/, "settings", "ตั้งค่า"], [/เตือน/, "remind", "รายการเตือน"], [/ประวัติ/, "history", "ประวัติ"],
+    [/คลังความรู้|ความรู้/, "kb", "คลังความรู้"], [/ตั้งค่า|เซ็ตติ้ง|setting/, "settings", "ตั้งค่า"], [/เตือน/, "remind", "รายการเตือน"], [/ประวัติ/, "history", "ประวัติ"],
     [/เช้า|แผนวันนี้|วางแผน/, "morning", "แผนตอนเช้า"], [/เย็น|สรุปวัน/, "evening", "บันทึกตอนเย็น"], [/แชท|ผู้ช่วย/, "chat", "แชทผู้ช่วย"]
   ];
   const OPS = { "บวก": "+", "+": "+", "ลบ": "-", "-": "-", "คูณ": "*", "x": "*", "×": "*", "*": "*", "หาร": "/", "/": "/", "÷": "/" };
@@ -220,9 +222,23 @@
       return text ? { type: "note", text } : { type: "ask", say: "ยังไม่ได้ยิน จะให้จดว่าอะไรครับ", pending };
     }
 
+    // ----- knowledge base: "สอนว่า…", "เพิ่มความรู้ว่า…"; "ค้นคลังความรู้เรื่อง…" -----
+    let kb = raw.match(/^(?:ช่วย)?\s*(?:สอน|เพิ่มความรู้|จำความรู้|บันทึกความรู้|ใส่คลังความรู้)(?:ให้)?(?:หน่อย|ด้วย)?\s*(?:ว่า|เรื่อง)\s*(.+)$/);
+    if (kb && cleanNote(kb[1])) return { type: "learn", text: cleanNote(kb[1]) };
+    kb = t.match(/^(?:ค้น|หา|ถาม|เปิด)(?:ใน|จาก)?คลังความรู้\s*(?:เรื่อง|ว่า|เกี่ยวกับ)?\s*(.*)$/);
+    if (kb) return kb[1].trim() ? { type: "askKb", q: cleanNote(kb[1]) } : { type: "open", tab: "kb", say: "เปิดคลังความรู้ให้แล้วครับ" };
+
     // ----- notes: "จดว่า…", "บันทึกว่า…", "จำไว้ว่า…"; "มีอะไรจดไว้บ้าง"; "หาบันทึกเรื่อง…"; "ลบบันทึกล่าสุด" -----
     const note = parseNote(raw, t);
     if (note) return note;
+
+    // ----- today's tasks and plan (the morning page) -----
+    if (/^(วันนี้มี(งาน|นัด)|งานวันนี้|นัดวันนี้)/.test(t)) {
+      if (/อะไร|บ้าง|ไหม|หรือเปล่า/.test(t)) return { type: "listNotes" };
+      const m = raw.match(/^(?:วันนี้มี(?:งาน|นัด)|งานวันนี้(?:มี)?|นัดวันนี้(?:มี)?)\s*(?:คือ|ได้แก่)?\s*(.+)$/);
+      if (m && cleanNote(m[1])) return { type: "dayTasks", text: cleanNote(m[1]) };
+    }
+    if (t.length <= 30 && /^(ช่วย|ขอ)?\s*(ทำ|วาง|จัด|คิด)?\s*แผน(งาน)?วันนี้|^วางแผน(ให้)?วันนี้/.test(t)) return { type: "planToday" };
 
     // ----- control -----
     if (short && /^(หยุด|พอแล้ว|เลิกฟัง|ปิด ?(live|ไลฟ์|ไมค์))/.test(t)) return { type: "stop" };
@@ -265,9 +281,9 @@
     // ----- small talk -----
     if (short && /^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|ฮัลโหล|hello|hi)/.test(t)) return { type: "say", say: "สวัสดีครับ มีอะไรให้ช่วยไหม" };
     if (short && /ขอบคุณ|ขอบใจ|แต๊งกิ้ว/.test(t)) return { type: "say", say: "ยินดีครับ" };
-    if (short && /(คุณ|เธอ|นาย)(คือ|เป็น)ใคร|ชื่ออะไร/.test(t)) return { type: "say", say: "ผมคือ N-assistant ผู้ช่วยส่วนตัวของคุณครับ" };
+    if (short && /(คุณ|เธอ|นาย)(คือ|เป็น)ใคร|^(คุณ|เธอ|นาย)?ชื่ออะไร/.test(t)) return { type: "say", say: "ผมคือ N-assistant ผู้ช่วยส่วนตัวของคุณครับ" };
     if (/ทำอะไรได้(บ้าง)?|ช่วยอะไรได้/.test(t) && t.length <= 30) {
-      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน จดบันทึก อ่านและค้นสิ่งที่จดไว้ คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
+      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน จดลงบันทึกวันนี้ จดงานวันนี้ ขอแผนวันนี้ ค้นบันทึกย้อนหลัง คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
     }
     if (short && /^(ได้ยิน(ไหม|มั้ย)|ทดสอบ|เทส)/.test(t)) return { type: "say", say: "ได้ยินชัดเจนครับ" };
 

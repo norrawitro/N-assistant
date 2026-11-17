@@ -337,3 +337,78 @@ Owner phone notes from the same session:
 - The earlier 34 bot cases and 21 note cases still pass.
 - Browser test with a mock bridge: close matches are spoken with the "ถ้าหมายถึง" prefix, an exact command has no prefix, and a thinking question still goes to the AI. No errors.
 - Not tested on the phone.
+
+## 2026-11-17 (later): one place for everything, no duplicate notes store
+
+**Owner:** the separate "สิ่งที่จดไว้" store duplicated what the app already had. They asked me to find what exists and connect Live to it, and approved the proposal.
+
+### What changed
+- **Separate notes store removed.** What Live writes now goes into each day's existing fields:
+  - "จดว่า…" goes to evening "อัปเดตวันนี้";
+  - "จดว่าพรุ่งนี้ต้อง…" goes to evening "ยกไปพรุ่งนี้", and the next morning plan already reads it;
+  - "วันนี้มีงาน…" or "งานวันนี้…" goes to morning "งานวันนี้";
+  - a sentence with a time is still a reminder.
+  - Each written line starts with "• ". The bot says which field it used.
+- **"มีอะไรจดไว้บ้าง" (and close matches)** reads today's tasks, update and carry-over, plus the next two reminders.
+- **"หาบันทึกเรื่อง…"** searches every day's tasks, worries, updates, wins and carry-overs, newest first, and says the day and the field.
+- **"ลบบันทึกล่าสุด"** removes the last line Live wrote, or else the last line of today's update.
+- **"ขอแผนวันนี้" / "วางแผนวันนี้"** starts the existing morning AI plan.
+- **The typed assistant chat is merged into the Live conversation.**
+  - A text box under the log takes typed questions and commands. They go through the same bot, then the AI, and are labelled "พิมพ์". They are spoken only when Live is on.
+  - The menu item "ผู้ช่วย" became "พิมพ์คุยกับผู้ช่วย" and focuses that box.
+  - The old chat page and its code are kept, only unreachable from the menu.
+- **Migration, once, on start:**
+  - notes from v1.0.23-1.0.25 move into the "อัปเดตวันนี้" of the day each was written, and the old store is removed;
+  - old chat messages are copied into the Live log in time order.
+  - A v1.0.23-1.0.25 JSON backup with `notes` is migrated the same way when imported.
+- **AI prompt:** it now holds today's tasks, update and carry-over instead of the notes list.
+- **Notes removed elsewhere:** the export no longer has a separate notes list, because notes are inside the days.
+
+### Checks
+- Node: all bot cases pass (34 + 27 + 21), including the new "วันนี้มีงาน…", "วันนี้มีงานอะไรบ้าง" and "ขอแผนวันนี้", and a trip-planning sentence that must still go to the AI.
+- Browser test with a mock bridge:
+  - old notes and old chat migrated;
+  - voice notes landing in the right fields, which are visible on the evening page;
+  - read back, search across days, delete the last line;
+  - the plan request starting the brief job;
+  - the menu focusing the typing box;
+  - a typed question answered by the bot, and another sent to the AI with today's log in the prompt.
+  - No errors and no sideways scrolling. The earlier Live tests pass.
+- Not tested on the phone.
+
+## 2026-11-17 (later): knowledge base ("คลังความรู้")
+
+**Owner:** connect the system to a knowledge base, perhaps as files about different subjects, so that anything asked can be answered.
+
+### What was built
+- **`kb.js` (new, no AI):** splits each file into pieces of about one paragraph, under its nearest Markdown heading.
+  - **Search** compares overlapping letter pairs (bigrams), so it works on Thai text without spaces. Rarer pairs count more.
+  - Question and polite words are removed first, and a few words that mean the same are unified (กิน/ทาน, รถยนต์/รถ, โทรศัพท์/เบอร์, คุณแม่/แม่).
+  - Each result has a "cover" (the share of the question found) and a score.
+  - `bestLines` picks the line(s) of a piece that answer best, for a short spoken answer.
+- **Menu "คลังความรู้" page:**
+  - import .md / .txt files (several at once, up to 2 MB each);
+  - type a new topic, with a title and `#` headings;
+  - a search box to try questions;
+  - the list of topics, with source, size and date, each deletable.
+- **Live:**
+  - **Answer straight from the base.** When the bot has no rule and the best piece covers at least 60% of the question, the bot answers from it at once: "จากคลังความรู้ เรื่อง… …". No AI is used.
+  - **Pass pieces to the AI.** Otherwise the up to 3 pieces covering at least 30% go into the AI prompt, which is told to answer from them and say so.
+  - **"สอนว่า…" / "เพิ่มความรู้ว่า…"** adds a line to a topic "สิ่งที่สอนด้วยเสียง".
+  - **"ค้นคลังความรู้เรื่อง…"** searches the base. "เปิดคลังความรู้" opens the page.
+- **File picker:** the WebView now has a file picker (`onShowFileChooser`). Before this, `<input type=file>` did nothing in the app, which also affected the old "นำเข้าไฟล์ JSON".
+- **Backup and storage:** the base is in the JSON backup and its import. Everything stays on the phone.
+- **Bot fix:** "แมวชื่ออะไร" was taken as "what is your name". That reply now needs คุณ/เธอ, or the sentence to start with ชื่ออะไร.
+
+### Checks
+- Node, search on sample files (house, car, health): 10 questions. The 8 that should be found are on top with enough cover, and 2 unrelated questions fall below the threshold.
+- All bot rule tests pass.
+- Browser test with a mock bridge:
+  - file import (2 files → 3 pieces), a typed topic, and the search box;
+  - Live answering 4 questions straight from the base with the right line, and nothing sent to the AI;
+  - "สอนว่า…" then asking about it;
+  - pieces passed to the AI for a related question needing thought;
+  - export, and the base still there after a reload.
+  - No errors and no sideways scrolling.
+- **Test-tool note:** the browser tool could not attach files with Thai file names, so ASCII names were used. On the phone the system picker gives the file directly.
+- **Not tested on the phone:** the file picker and real files.
