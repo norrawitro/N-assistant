@@ -10,6 +10,7 @@
  *   { type: "listReminders" } | { type: "aiStatus" } | { type: "cancel" } | { type: "stop" }
  *   { type: "note", text }        save a note        { type: "listNotes" }        read the latest notes
  *   { type: "findNotes", q }      search the notes   { type: "deleteLastNote" }   remove the newest note
+ *   { type: "dayTasks", text }    add to today's tasks   { type: "planToday" }    ask the AI for today's plan
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
 (function (root) {
@@ -224,6 +225,14 @@
     const note = parseNote(raw, t);
     if (note) return note;
 
+    // ----- today's tasks and plan (the morning page) -----
+    if (/^(วันนี้มี(งาน|นัด)|งานวันนี้|นัดวันนี้)/.test(t)) {
+      if (/อะไร|บ้าง|ไหม|หรือเปล่า/.test(t)) return { type: "listNotes" };
+      const m = raw.match(/^(?:วันนี้มี(?:งาน|นัด)|งานวันนี้(?:มี)?|นัดวันนี้(?:มี)?)\s*(?:คือ|ได้แก่)?\s*(.+)$/);
+      if (m && cleanNote(m[1])) return { type: "dayTasks", text: cleanNote(m[1]) };
+    }
+    if (t.length <= 30 && /^(ช่วย|ขอ)?\s*(ทำ|วาง|จัด|คิด)?\s*แผน(งาน)?วันนี้|^วางแผน(ให้)?วันนี้/.test(t)) return { type: "planToday" };
+
     // ----- control -----
     if (short && /^(หยุด|พอแล้ว|เลิกฟัง|ปิด ?(live|ไลฟ์|ไมค์))/.test(t)) return { type: "stop" };
     if (ctx && ctx.aiBusy) {
@@ -267,7 +276,7 @@
     if (short && /ขอบคุณ|ขอบใจ|แต๊งกิ้ว/.test(t)) return { type: "say", say: "ยินดีครับ" };
     if (short && /(คุณ|เธอ|นาย)(คือ|เป็น)ใคร|ชื่ออะไร/.test(t)) return { type: "say", say: "ผมคือ N-assistant ผู้ช่วยส่วนตัวของคุณครับ" };
     if (/ทำอะไรได้(บ้าง)?|ช่วยอะไรได้/.test(t) && t.length <= 30) {
-      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน จดบันทึก อ่านและค้นสิ่งที่จดไว้ คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
+      return { type: "say", say: "ผมบอกเวลา บอกวันที่ ตั้งเตือน จดลงบันทึกวันนี้ จดงานวันนี้ ขอแผนวันนี้ ค้นบันทึกย้อนหลัง คิดเลขง่ายๆ และเปิดหน้าต่างๆ ได้ทันที ส่วนเรื่องอื่นผมจะส่งให้เอไอคิดให้ครับ" };
     }
     if (short && /^(ได้ยิน(ไหม|มั้ย)|ทดสอบ|เทส)/.test(t)) return { type: "say", say: "ได้ยินชัดเจนครับ" };
 

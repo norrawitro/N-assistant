@@ -337,3 +337,41 @@ Owner phone notes from the same session:
 - The earlier 34 bot cases and 21 note cases still pass.
 - Browser test with a mock bridge: close matches are spoken with the "ถ้าหมายถึง" prefix, an exact command has no prefix, and a thinking question still goes to the AI. No errors.
 - Not tested on the phone.
+
+## 2026-11-17 (later): one place for everything, no duplicate notes store
+
+**Owner:** the separate "สิ่งที่จดไว้" store duplicated what the app already had. They asked me to find what exists and connect Live to it, and approved the proposal.
+
+### What changed
+- **Separate notes store removed.** What Live writes now goes into each day's existing fields:
+  - "จดว่า…" goes to evening "อัปเดตวันนี้";
+  - "จดว่าพรุ่งนี้ต้อง…" goes to evening "ยกไปพรุ่งนี้", and the next morning plan already reads it;
+  - "วันนี้มีงาน…" or "งานวันนี้…" goes to morning "งานวันนี้";
+  - a sentence with a time is still a reminder.
+  - Each written line starts with "• ". The bot says which field it used.
+- **"มีอะไรจดไว้บ้าง" (and close matches)** reads today's tasks, update and carry-over, plus the next two reminders.
+- **"หาบันทึกเรื่อง…"** searches every day's tasks, worries, updates, wins and carry-overs, newest first, and says the day and the field.
+- **"ลบบันทึกล่าสุด"** removes the last line Live wrote, or else the last line of today's update.
+- **"ขอแผนวันนี้" / "วางแผนวันนี้"** starts the existing morning AI plan.
+- **The typed assistant chat is merged into the Live conversation.**
+  - A text box under the log takes typed questions and commands. They go through the same bot, then the AI, and are labelled "พิมพ์". They are spoken only when Live is on.
+  - The menu item "ผู้ช่วย" became "พิมพ์คุยกับผู้ช่วย" and focuses that box.
+  - The old chat page and its code are kept, only unreachable from the menu.
+- **Migration, once, on start:**
+  - notes from v1.0.23-1.0.25 move into the "อัปเดตวันนี้" of the day each was written, and the old store is removed;
+  - old chat messages are copied into the Live log in time order.
+  - A v1.0.23-1.0.25 JSON backup with `notes` is migrated the same way when imported.
+- **AI prompt:** it now holds today's tasks, update and carry-over instead of the notes list.
+- **Notes removed elsewhere:** the export no longer has a separate notes list, because notes are inside the days.
+
+### Checks
+- Node: all bot cases pass (34 + 27 + 21), including the new "วันนี้มีงาน…", "วันนี้มีงานอะไรบ้าง" and "ขอแผนวันนี้", and a trip-planning sentence that must still go to the AI.
+- Browser test with a mock bridge:
+  - old notes and old chat migrated;
+  - voice notes landing in the right fields, which are visible on the evening page;
+  - read back, search across days, delete the last line;
+  - the plan request starting the brief job;
+  - the menu focusing the typing box;
+  - a typed question answered by the bot, and another sent to the AI with today's log in the prompt.
+  - No errors and no sideways scrolling. The earlier Live tests pass.
+- Not tested on the phone.

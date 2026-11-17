@@ -76,7 +76,13 @@
   // ---------- menu (all earlier features) and settings button ----------
   function setMenu(open) { $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open)); }
   $("menuBtn").addEventListener("click", e => { e.stopPropagation(); setMenu($("menu").hidden); });
-  $("menu").addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) { setMenu(false); showTab(b.dataset.go); } });
+  $("menu").addEventListener("click", e => {
+    const b = e.target.closest("[data-go]"); if (!b) return;
+    setMenu(false);
+    // The typed assistant chat now lives in the Live conversation (one place for voice and typing).
+    if (b.dataset.go === "chatlive") { showTab("live"); setTimeout(() => { $("typeInput").scrollIntoView({ block: "center" }); $("typeInput").focus(); }, 50); }
+    else showTab(b.dataset.go);
+  });
   document.addEventListener("click", e => { if (!$("menu").hidden && !e.target.closest("#menu")) setMenu(false); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
   $("settingsBtn").addEventListener("click", () => { setMenu(false); showTab("settings"); });
@@ -101,7 +107,7 @@
     if (!convo.length) { const li = document.createElement("li"); li.className = "convo-empty"; li.textContent = "ยังไม่มีบทสนทนา"; ol.appendChild(li); return; }
     convo.forEach(m => {
       const li = document.createElement("li"); li.className = m.who === "me" ? "me" : m.who === "note" ? "note" : m.who === "bot" ? "bot" : "app";
-      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? "ได้ยิน" : m.who === "note" ? "แจ้ง" : m.who === "bot" ? "บอทตอบทันที" : "AI ตอบ"} · ${convoTime(m.t)}`;
+      const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.who === "me" ? (m.typed ? "พิมพ์" : "ได้ยิน") : m.who === "note" ? "แจ้ง" : m.who === "bot" ? "บอทตอบทันที" : "AI ตอบ"} · ${convoTime(m.t)}`;
       const p = document.createElement("span"); p.textContent = m.text;
       li.append(w, p); ol.appendChild(li);
     });
@@ -113,7 +119,7 @@
     }
     ol.scrollTop = ol.scrollHeight;
   }
-  function addConvo(who, text) { convo.push({ t: Date.now(), who, text }); if (convo.length > CONVO_MAX) convo = convo.slice(-CONVO_MAX); saveConvo(); renderConvo(); }
+  function addConvo(who, text, extra) { convo.push({ t: Date.now(), who, text, ...(extra || {}) }); if (convo.length > CONVO_MAX) convo = convo.slice(-CONVO_MAX); saveConvo(); renderConvo(); }
   $("convoClear").addEventListener("click", () => { if (convo.length && confirm("ล้างบันทึกการสนทนาทั้งหมด?")) { convo = []; saveConvo(); renderConvo(); } });
 
   function setLive(on, state, message) {
@@ -143,41 +149,82 @@
     if (liveMode === "ai") handleHeard(t);
   };
 
-  // ---------- notes, written by voice or by hand; kept on the phone with the other data ----------
-  const notes = () => (docs.notes && Array.isArray(docs.notes.list)) ? docs.notes.list : [];
-  function saveNotes(list) { save("notes", { list, updatedAt: Date.now() }); renderNotes(); }
-  function addNote(text) { const n = { id: uid(), text: String(text).trim(), at: Date.now() }; saveNotes([...notes(), n]); return n; }
-  const noteWhen = at => new Date(at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const spokenWhen = at => { const d = new Date(at), td = todayDate(), k = keyOf(d);
-    return (k === td ? "วันนี้" : k === keyOf(new Date(Date.now() - 864e5)) ? "เมื่อวาน" : d.toLocaleDateString("th-TH", { day: "numeric", month: "long" })) + ` ${d.getHours()} นาฬิกา ${d.getMinutes()} นาที`; };
-  function renderNotes() {
-    const list = notes().slice().reverse(), ol = $("notesList");
-    $("notesCount").textContent = list.length ? `(${list.length})` : "";
-    ol.textContent = "";
-    if (!list.length) { const li = document.createElement("li"); li.className = "muted small"; li.textContent = "ยังไม่มีสิ่งที่จดไว้"; ol.appendChild(li); return; }
-    list.forEach(n => {
-      const li = document.createElement("li");
-      const t = document.createElement("span"); t.className = "nt";
-      const w = document.createElement("span"); w.className = "when"; w.textContent = noteWhen(n.at);
-      t.append(w, document.createTextNode(n.text));
-      const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.setAttribute("aria-label", "ลบบันทึกนี้"); del.dataset.id = n.id;
-      li.append(t, del); ol.appendChild(li);
-    });
+  // ---------- what Live writes down goes into the day's existing fields (no separate notes store) ----------
+  // "จดว่า…" -> evening "อัปเดตวันนี้" (notes); "พรุ่งนี้ต้อง…" -> evening "ยกไปพรุ่งนี้" (tomorrow);
+  // "วันนี้มีงาน…" -> morning "งานวันนี้" (tasks). Each line starts with "• ".
+  const FIELD = { notes: ["evening", "notes", "อัปเดตวันนี้"], tomorrow: ["evening", "tomorrow", "ยกไปพรุ่งนี้"], tasks: ["morning", "tasks", "งานวันนี้"] };
+  let lastWritten = null; // { date, field, line } for "ลบบันทึกล่าสุด"
+  const linesOf = v => String(v || "").split("\n").map(x => x.trim()).filter(Boolean);
+  function appendToDay(field, text, date = todayDate()) {
+    const [part, key] = FIELD[field], day = getDay(date), line = "• " + String(text).trim();
+    const cur = String((day[part] || {})[key] || "").trim();
+    saveDay(date, { [part]: { [key]: cur ? cur + "\n" + line : line } });
+    lastWritten = { date, field, line };
+    if (date === todayDate()) hydrate();
   }
-  $("notesList").addEventListener("click", e => {
-    const b = e.target.closest("button[data-id]"); if (!b) return;
-    const n = notes().find(x => x.id === b.dataset.id);
-    if (n && confirm(`ลบบันทึกนี้?\n${n.text}`)) saveNotes(notes().filter(x => x.id !== n.id));
-  });
-  function addTypedNote() { const v = $("noteInput").value.trim(); if (!v) return; addNote(v); $("noteInput").value = ""; }
-  $("noteAdd").addEventListener("click", addTypedNote);
-  $("noteInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); addTypedNote(); } });
-  /** Notes that contain every word of the query (Thai has no spaces, so whole query first, then its parts). */
-  function findNotes(q) {
-    const all = notes(), qq = String(q).toLowerCase().trim();
-    let hit = all.filter(n => n.text.toLowerCase().includes(qq));
-    if (!hit.length) { const parts = qq.split(/\s+/).filter(x => x.length > 1); if (parts.length > 1) hit = all.filter(n => parts.every(p => n.text.toLowerCase().includes(p))); }
+  function removeLine(date, field, line) {
+    const [part, key] = FIELD[field], lines = String((getDay(date)[part] || {})[key] || "").split("\n");
+    const i = lines.map(x => x.trim()).lastIndexOf(line); if (i < 0) return false;
+    lines.splice(i, 1);
+    saveDay(date, { [part]: { [key]: lines.join("\n").trim() } });
+    if (date === todayDate()) hydrate();
+    return true;
+  }
+  /** Where a sentence belongs: tomorrow's carry-over, today's tasks, or today's update. */
+  function noteField(text) {
+    if (/^(พรุ่งนี้|วันพรุ่งนี้)/.test(text)) return "tomorrow";
+    if (/^(วันนี้มี|งานวันนี้|นัดวันนี้)/.test(text)) return "tasks";
+    return "notes";
+  }
+  const dayName = date => date === todayDate() ? "วันนี้" : date === keyOf(new Date(Date.now() - 864e5)) ? "เมื่อวาน" : dateOf(date).toLocaleDateString("th-TH", { day: "numeric", month: "long" });
+  /** Searches every day's tasks, worries, updates, wins and carry-overs. Newest first. */
+  function searchDays(q) {
+    const qq = String(q).toLowerCase().trim(), parts = qq.split(/\s+/).filter(x => x.length > 1);
+    const fields = [["morning", "tasks", "งาน"], ["morning", "worry", "เรื่องกังวล"], ["evening", "notes", "อัปเดต"], ["evening", "wins", "เรื่องดี"], ["evening", "tomorrow", "ยกไปพรุ่งนี้"]];
+    const hit = [];
+    for (const d of allDays().slice().reverse()) {
+      for (const [part, key, label] of fields) {
+        for (const line of linesOf((d[part] || {})[key])) {
+          const l = line.toLowerCase();
+          if (l.includes(qq) || (parts.length > 1 && parts.every(x => l.includes(x)))) hit.push({ date: d.date, label, text: line.replace(/^•\s*/, "") });
+        }
+      }
+    }
     return hit;
+  }
+  /** One-time move of the separate notes store (v1.0.23-1.0.25) into each day's "อัปเดตวันนี้". */
+  function migrateNotes() {
+    const list = docs.notes && Array.isArray(docs.notes.list) ? docs.notes.list : [];
+    if (!list.length) { if (docs.notes) { delete docs.notes; lsSet(LS_DOCS, docs); } return; }
+    for (const n of list) {
+      if (!n || !n.text) continue;
+      const date = keyOf(new Date(n.at || Date.now())), day = getDay(date);
+      const cur = String((day.evening || {}).notes || "").trim(), line = "• " + n.text;
+      if (!linesOf(cur).includes(line)) saveDay(date, { evening: { notes: cur ? cur + "\n" + line : line } });
+    }
+    delete docs.notes; lsSet(LS_DOCS, docs);
+  }
+
+  // ---------- typing into the same conversation (replaces the separate chat page) ----------
+  function sendTyped() {
+    const v = $("typeInput").value.trim(); if (!v) return;
+    $("typeInput").value = "";
+    addConvo("me", v, { typed: true });
+    if (liveMode === "ai") handleHeard(v);
+    else liveReply(v, "app"); // echo mode just repeats, as with voice
+  }
+  $("typeSend").addEventListener("click", sendTyped);
+  $("typeInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); sendTyped(); } });
+  /** One-time copy of the old assistant-chat history into the Live conversation, in time order. */
+  function migrateChat() {
+    try { if (localStorage.getItem("nassistant.chatMigrated")) return; } catch { return; }
+    const old = (docs.chat && Array.isArray(docs.chat.messages)) ? docs.chat.messages : [];
+    if (old.length) {
+      const moved = old.filter(m => m && m.text).map(m => ({ t: m.at || Date.now(), who: m.role === "user" ? "me" : m.role === "note" ? "note" : "app", text: m.text, typed: m.role === "user" }));
+      convo = [...convo, ...moved].sort((a, b) => a.t - b.t).slice(-CONVO_MAX);
+      saveConvo();
+    }
+    try { localStorage.setItem("nassistant.chatMigrated", "1"); } catch {}
   }
 
   // ---------- quick bot (rules, always there) in front of the AI ----------
@@ -213,22 +260,35 @@
       const list = reminders().filter(x => x.on !== false && nextAt(x)).sort((a, b) => nextAt(a) - nextAt(b)).slice(0, 3);
       liveReply(list.length ? `การเตือนที่ใกล้ที่สุด ${list.map(x => `${reminderWhen(x)} ${x.text}`).join(" และ ")} ครับ` : "ตอนนี้ยังไม่มีการเตือนที่ตั้งไว้ครับ", "bot");
     } else if (r.type === "open") { liveReply(r.say, "bot"); showTab(r.tab); }
-    else if (r.type === "note") { addNote(r.text); liveReply(`จดแล้วครับ ${r.text}`, "bot"); }
-    else if (r.type === "listNotes") {
-      const list = notes();
-      if (!list.length) liveReply("ยังไม่มีสิ่งที่จดไว้ครับ", "bot");
-      else {
-        const last = list.slice(-5).reverse();
-        liveReply(`จดไว้ทั้งหมด ${list.length} เรื่อง ${list.length > 5 ? "ล่าสุด 5 เรื่องคือ " : ""}${last.map((n, i) => `${i + 1}. ${n.text}`).join(" ")}`, "bot");
-      }
+    else if (r.type === "note" || r.type === "dayTasks") {
+      const field = r.type === "dayTasks" ? "tasks" : noteField(r.text);
+      const text = field === "tomorrow" ? r.text.replace(/^(วัน)?พรุ่งนี้\s*(ต้อง|จะ)?\s*/, "") || r.text : r.text;
+      appendToDay(field, text);
+      liveReply(`จดลง${FIELD[field][2]}แล้วครับ ${text}`, "bot");
+    } else if (r.type === "listNotes") {
+      const t = today(), parts = [];
+      const tasks = linesOf(t.morning.tasks), upd = linesOf(t.evening.notes), tmr = linesOf(t.evening.tomorrow);
+      if (tasks.length) parts.push(`งานวันนี้ ${tasks.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
+      if (upd.length) parts.push(`อัปเดตวันนี้ ${upd.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
+      if (tmr.length) parts.push(`ยกไปพรุ่งนี้ ${tmr.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
+      const rem = reminders().filter(x => x.on !== false && nextAt(x)).sort((a, b) => nextAt(a) - nextAt(b)).slice(0, 2);
+      if (rem.length) parts.push(`เตือนที่ใกล้ที่สุด ${rem.map(x => `${reminderWhen(x)} ${x.text}`).join(" และ ")}`);
+      liveReply(parts.length ? parts.join(" ต่อไป ") + " ครับ" : "วันนี้ยังไม่ได้จดอะไรไว้ครับ", "bot");
     } else if (r.type === "findNotes") {
-      const hit = findNotes(r.q);
-      liveReply(!hit.length ? `ไม่พบสิ่งที่จดเกี่ยวกับ ${r.q} ครับ`
-        : `เจอ ${hit.length} เรื่องเกี่ยวกับ ${r.q} ${hit.slice(-3).reverse().map(n => `${spokenWhen(n.at)} จดว่า ${n.text}`).join(" และ ")}`, "bot");
+      const hit = searchDays(r.q);
+      liveReply(!hit.length ? `ไม่พบเรื่อง ${r.q} ในบันทึกครับ`
+        : `เจอ ${hit.length} ที่เกี่ยวกับ ${r.q} ${hit.slice(0, 3).map(h => `${dayName(h.date)} ใน${h.label} ${h.text}`).join(" และ ")}`, "bot");
     } else if (r.type === "deleteLastNote") {
-      const list = notes();
-      if (!list.length) liveReply("ยังไม่มีสิ่งที่จดไว้ครับ", "bot");
-      else { const n = list[list.length - 1]; saveNotes(list.slice(0, -1)); liveReply(`ลบบันทึกล่าสุดแล้วครับ ${n.text}`, "bot"); }
+      if (lastWritten && removeLine(lastWritten.date, lastWritten.field, lastWritten.line)) {
+        liveReply(`ลบที่จดล่าสุดแล้วครับ ${lastWritten.line.replace(/^•\s*/, "")}`, "bot"); lastWritten = null;
+      } else {
+        const lines = linesOf(today().evening.notes);
+        if (!lines.length) liveReply("วันนี้ยังไม่มีที่จดไว้ให้ลบครับ", "bot");
+        else { const l = lines[lines.length - 1]; removeLine(todayDate(), "notes", l); liveReply(`ลบที่จดล่าสุดแล้วครับ ${l.replace(/^•\s*/, "")}`, "bot"); }
+      }
+    } else if (r.type === "planToday") {
+      liveReply("ได้ครับ ส่งให้เอไอวางแผนวันนี้ แผนจะอยู่ในหน้าเช้า", "bot");
+      $("briefBtn").click();
     }
     else if (r.type === "aiStatus") liveReply(`เอไอคิดมาแล้ว ${Math.floor((Date.now() - liveJob.at) / 1000)} วินาที ยังไม่เสร็จครับ`, "bot");
     else if (r.type === "cancel") {
@@ -305,14 +365,13 @@
     const history = past.slice(-8).map(m => `${m.who === "me" ? "ผู้ใช้" : "ผู้ช่วย"}: ${m.text}`).join("\n");
     const rems = reminders().filter(r => r.on !== false && nextAt(r)).slice(0, 15).map(r => `${reminderWhen(r)} ${r.text}`).join("; ");
     const b = today().morning.brief;
-    const nts = notes().slice(-15).map(n => `- (${noteWhen(n.at)}) ${n.text}`).join("\n");
+    const td = today();
     return `คุณคือ N-assistant ผู้ช่วยส่วนตัวที่คุยกับผู้ใช้ด้วยเสียง ข้อความของผู้ใช้มาจากการแปลงเสียงเป็นข้อความ อาจสะกดผิดหรือขาดคำ ให้เดาความหมายที่ใกล้ที่สุด
 ตอนนี้: ${thDate(now)} เวลา ${hhmm(now)} (วันที่ ${todayDate()})
 ${contextText(todayDate())}
 แผนวันนี้: ${b ? `เป้าหลัก ${b.focus}; งาน ${(b.priorities || []).join("; ")}` : "(ยังไม่ได้ทำ)"}
 การเตือนที่ตั้งไว้: ${rems || "(ไม่มี)"}
-สิ่งที่ผู้ใช้จดไว้ (ใช้ตอบได้เมื่อเกี่ยวข้อง):
-${nts || "(ไม่มี)"}
+บันทึกวันนี้: งาน ${td.morning.tasks || "-"} | อัปเดต ${td.evening.notes || "-"} | ยกไปพรุ่งนี้ ${td.evening.tomorrow || "-"}
 
 บทสนทนาก่อนหน้า:
 ${history || "(เริ่มบทสนทนาใหม่)"}
@@ -845,15 +904,14 @@ ${contextText(date)}
   const csvCell = v => `"${String(v ?? "").replace(/"/g, '""').replace(/\r?\n/g, " / ")}"`;
   function buildExport(kind) {
     const days = allDays();
-    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), notes: notes(), days }, null, 2);
+    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), days }, null, 2);
     if (kind === "csv") {
       const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก AI"];
       const rows = days.map(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
         return [d.date, d.morning?.tasks, d.morning?.worry, d.morning?.energy, b.focus, pr.join(" | "), (b.cautions || []).join(" | "), (b.plan || []).map(p => p.time + " " + p.item).join(" | "), dn.map(i => pr[i]).filter(Boolean).join(" | "), pr.length ? `${dn.length}/${pr.length}` : "", d.evening?.notes, d.evening?.wins, d.evening?.tomorrow, d.evening?.mood, d.evening?.reflection].map(csvCell).join(","); });
       return "﻿" + [head.map(csvCell).join(","), ...rows].join("\r\n");
     }
-    const noteLines = notes().length ? ["## สิ่งที่จดไว้", "", ...notes().map(n => `- ${noteWhen(n.at)} ${n.text}`), ""] : [];
-    return ["# N-assistant บันทึกประจำวัน", "", ...noteLines, ...days.flatMap(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
+    return ["# N-assistant บันทึกประจำวัน", "", ...days.flatMap(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
       return [`## ${d.date}`, "", b.focus ? `**เป้าหลัก:** ${b.focus}` : "", d.morning?.tasks ? `**งานวันนี้:** ${d.morning.tasks}` : "",
         pr.length ? "\n**ต้องทำ**\n" + pr.map((p, i) => `- [${dn.includes(i) ? "x" : " "}] ${p}`).join("\n") : "",
         (b.cautions || []).length ? "\n**ควรระวัง**\n" + b.cautions.map(c => "- " + c).join("\n") : "",
@@ -889,11 +947,8 @@ ${contextText(date)}
         docs.reminders = { list: merged, updatedAt: Date.now() };
         if (A) A.setReminders(JSON.stringify(merged));
       }
-      if (Array.isArray(data.notes)) {
-        const have = new Set(notes().map(x => x.id));
-        docs.notes = { list: [...notes(), ...data.notes.filter(x => x && x.id && x.text && !have.has(x.id))].sort((a, b) => (a.at || 0) - (b.at || 0)), updatedAt: Date.now() };
-      }
-      lsSet(LS_DOCS, docs); hydrate(); renderHistory(); renderNotes(); schedulePrepSync();
+      if (Array.isArray(data.notes)) { docs.notes = { list: data.notes }; migrateNotes(); } // backups from v1.0.23-1.0.25
+      lsSet(LS_DOCS, docs); hydrate(); renderHistory(); schedulePrepSync();
       $("xStatus").textContent = `นำเข้าแล้ว ${n} วัน`;
     } catch { $("xStatus").textContent = "ไฟล์นี้ไม่ใช่ไฟล์สำรองของ N-assistant"; }
     e.target.value = "";
@@ -1120,7 +1175,8 @@ ${contextText(date)}
   const info = nativeInfo();
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
-  hydrate(); renderHistory(); renderNotes(); setLiveMode(liveMode); showTab("live");
+  migrateNotes(); migrateChat();
+  hydrate(); renderHistory(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();
