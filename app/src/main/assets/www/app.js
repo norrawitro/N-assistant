@@ -198,7 +198,12 @@
     if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอส่งให้เอไอคิดนะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
     else liveReply("ขอส่งให้เอไอคิดสักครู่นะครับ", "bot");
   }
+  let botPrefix = ""; // for a close match: "ถ้าหมายถึง … ก็คือ" before the answer
   function applyBot(r) {
+    botPrefix = r.guess ? `ถ้าหมายถึง "${r.guess}" ก็คือ ` : "";
+    try { applyBotInner(r); } finally { botPrefix = ""; }
+  }
+  function applyBotInner(r) {
     if (r.type === "say") liveReply(r.say, "bot");
     else if (r.type === "ask") { botPending = r.pending; liveReply(r.say, "bot"); }
     else if (r.type === "reminder") {
@@ -279,6 +284,7 @@
   const liveOn = () => $("liveSwitch").getAttribute("aria-checked") === "true";
   /** Says something to the person and writes it in the log. Live listens again afterwards. */
   function liveReply(text, kind = "app") {
+    if (kind === "bot" && botPrefix) { text = botPrefix + text; botPrefix = ""; }
     addConvo(kind, text);
     if (liveOn() && A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
   }

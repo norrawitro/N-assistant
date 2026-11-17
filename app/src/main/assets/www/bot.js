@@ -111,7 +111,10 @@
     if (/(มี|ดู|ขอดู|อ่าน|เปิด|ทวน).{0,8}(อะไร)?.{0,4}(ที่)?(จด|บันทึกย่อ|โน้ต|โน๊ต)(ไว้)?(บ้าง|ทั้งหมด)?|(จด|โน้ต|โน๊ต)อะไรไว้(บ้าง)?|บันทึกอะไรไว้(บ้าง)?|^(อ่าน|ดู)(บันทึก|โน้ต|โน๊ต)$/.test(t)
         && !/(จด|บันทึก)(ว่า|ไว้ว่า)/.test(t)) {
       const q = t.match(/(?:เรื่อง|เกี่ยวกับ)\s*(.+?)(?:\s*(?:บ้าง|ไหม|มั้ย|หรือเปล่า|ไว้))*$/);
-      return q && q[1] ? { type: "findNotes", q: cleanNote(q[1]) } : { type: "listNotes" };
+      if (q && q[1]) return { type: "findNotes", q: cleanNote(q[1]) };
+      // "มีโน้ตแอร์ไหม": a subject plus a yes/no question is a search, not the whole list
+      if (/(ไหม|หรือเปล่า|รึเปล่า|ป่าว)\s*(ครับ|ค่ะ|คะ)?$/.test(t)) { const sub = subjectOf(t); if (sub) return { type: "findNotes", q: sub }; }
+      return { type: "listNotes" };
     }
     // searching
     let m = t.match(/^(?:ช่วย)?(?:หา|ค้น|ค้นหา)(?:ใน)?(?:บันทึก|โน้ต|โน๊ต|ที่จด)(?:ไว้)?\s*(?:เรื่อง|เกี่ยวกับ|ว่า)?\s*(.+)$/)
@@ -132,9 +135,66 @@
     return null;
   }
 
+  /** Common misspellings and spelling variants, so typed and spoken text look alike to the rules. */
+  function normalize(text) {
+    return String(text || "").trim().replace(/\s+/g, " ")
+      .replace(/ใว้/g, "ไว้").replace(/ใหม(?=$| |ครับ|ค่ะ|คะ)/g, "ไหม").replace(/มั๊ย|มั้ย/g, "ไหม")
+      .replace(/โน๊ต/g, "โน้ต").replace(/เตื่อน/g, "เตือน").replace(/บันทืก/g, "บันทึก").replace(/อ่ะไร|อะไล/g, "อะไร");
+  }
+
+  // ---------- close-match layer ----------
+  // Each word group stands for one idea. An intent fires when the sentence holds the ideas it needs, in any order.
+  const GROUPS = {
+    NOTE: /จด|บันทึก|โน้ต|เมโม|memo|ที่เขียนไว้|ที่จำไว้/,
+    WHAT: /อะไร|เรื่องไหน|อันไหน/,
+    ALL: /บ้าง|ทั้งหมด|หมดเลย|รายการ|ทุกอัน|ทุกเรื่อง/,
+    SHOW: /ดู|อ่าน|ทวน|เช็ค|เช็ก|บอก|เปิด|แสดง|ฟัง/,
+    FIND: /หา|ค้น|มี.*(ไหม|หรือเปล่า|รึเปล่า|ป่าว)|เคย/,
+    ABOUT: /เรื่อง|เกี่ยวกับ/,
+    DEL: /ลบ|เอาออก|ทิ้ง/,
+    LAST: /ล่าสุด|เมื่อกี้|เมื่อกี๊|อันสุดท้าย|อันเมื่อกี้/,
+    REMIND: /เตือน|อลาร์ม|ปลุก|นัด/,
+    TIME: /กี่โมง|เวลา|นาฬิกา/,
+    DATE: /วันที่|วันอะไร|วันนี้วัน/,
+    THOUGHT: /ควร|คิดว่า|ช่วยคิด|ยังไง|อย่างไร|ทำไม|แนะนำ|สรุป|วิเคราะห์|เป็นไง|ดีไหม|ตอนไหน/
+  };
+  const has = (t, g) => GROUPS[g].test(t);
+  /** The words of the sentence that are not command words: the subject to search for. */
+  function subjectOf(t) {
+    const m = t.match(/(?:เรื่อง|เกี่ยวกับ)\s*(.+)$/);
+    let x = m ? m[1] : t;
+    x = x.replace(/(ช่วย|หน่อย|ที|ด้วย|ครับ|ค่ะ|คะ|นะ|ไหม|หรือเปล่า|รึเปล่า|ป่าว|บ้าง|ไว้|เคย|มี|หา|ค้น|ดู|อ่าน|จด|บันทึก|โน้ต|ที่|ใน|เรื่อง|เกี่ยวกับ|อะไร)/g, " ").replace(/\s+/g, " ").trim();
+    return x.length >= 2 ? x : "";
+  }
+  function fuzzy(t, now, ctx) {
+    if (t.length > 45 || has(t, "THOUGHT")) return null; // long or thinking questions belong to the AI
+    if (has(t, "NOTE")) {
+      if (has(t, "DEL") && (has(t, "LAST") || t.length <= 16)) return { type: "deleteLastNote", guess: "ลบบันทึกล่าสุด" };
+      if (has(t, "DEL")) return null; // deleting a particular note: leave it to the person (the × in the list)
+      if (has(t, "ABOUT") || has(t, "FIND")) {
+        const q = subjectOf(t);
+        if (q) return { type: "findNotes", q, guess: `หาบันทึกเรื่อง${q}` };
+      }
+      if (has(t, "WHAT") || has(t, "ALL") || has(t, "SHOW")) return { type: "listNotes", guess: "มีอะไรจดไว้บ้าง" };
+      return null;
+    }
+    if (has(t, "REMIND") && (has(t, "WHAT") || has(t, "ALL") || has(t, "SHOW")) && !parseTime(t, now)) {
+      return { type: "listReminders", guess: "มีการเตือนอะไรบ้าง" };
+    }
+    if (has(t, "TIME") && !has(t, "REMIND") && t.length <= 24 && /ตอนนี้|เท่าไ|กี่|บอก|ดู/.test(t)) {
+      return { type: "say", say: `ตอนนี้ ${now.getHours()} นาฬิกา ${now.getMinutes()} นาที ครับ`, guess: "ตอนนี้กี่โมง" };
+    }
+    if (has(t, "DATE") && t.length <= 24) {
+      const tomorrow = /พรุ่งนี้/.test(t);
+      const d = tomorrow ? addDays(now, 1) : now;
+      return { type: "say", say: `${tomorrow ? "พรุ่งนี้" : "วันนี้"}${thDate(d)}ครับ`, guess: tomorrow ? "พรุ่งนี้วันอะไร" : "วันนี้วันอะไร" };
+    }
+    return null;
+  }
+
   function parse(text, ctx) {
     const now = (ctx && ctx.now) || new Date();
-    const raw = String(text || "").trim().replace(/\s+/g, " ");
+    const raw = normalize(text);
     const t = raw.toLowerCase();
     if (!t) return null;
     const short = t.length <= 24;
@@ -211,10 +271,14 @@
     }
     if (short && /^(ได้ยิน(ไหม|มั้ย)|ทดสอบ|เทส)/.test(t)) return { type: "say", say: "ได้ยินชัดเจนครับ" };
 
+    // ----- close match: the right words in another order or with other words, e.g. "บันทึกอะไรไว้" -----
+    const near = fuzzy(t, now, ctx);
+    if (near) return near;
+
     return null; // not simple: goes to the AI
   }
 
-  const NBot = { parse, parseTime, digits };
+  const NBot = { parse, parseTime, digits, normalize };
   if (typeof module !== "undefined" && module.exports) module.exports = NBot;
   else root.NBot = NBot;
 })(typeof window !== "undefined" ? window : globalThis);

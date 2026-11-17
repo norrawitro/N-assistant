@@ -296,3 +296,44 @@ Owner phone notes from the same session:
   - notes still there after a reload.
   - No errors and no sideways scrolling. The earlier bot and AI test still passes.
 - **Not tested** on the phone.
+
+## 2026-11-17 (later): close matches ("คำใกล้เคียง")
+
+**Owner's request:** if a sentence holds the words the bot knows, but in another order or with other words ("จดอะไรบ้าง", "บันทึกอะไรใว้"), link it to the real command. Then say "ถ้าหมายถึง … ก็คือ (the real answer)".
+
+### What was built (bot.js, still no AI)
+- **Normalizing first:** common misspellings and variants are fixed before any rule runs: ใว้→ไว้, ใหม→ไหม (at the end of a question), มั้ย/มั๊ย→ไหม, โน๊ต→โน้ต, and a few typos.
+- **Close-match layer:** it runs after the exact rules and before the AI.
+  - **Word groups.** Each group stands for one idea:
+    - note: จด, บันทึก, โน้ต, เมโม;
+    - what: อะไร, เรื่องไหน;
+    - all: บ้าง, ทั้งหมด, รายการ;
+    - show: ดู, อ่าน, ทวน, เช็ค, บอก, ฟัง;
+    - find: หา, ค้น, มี…ไหม, เคย;
+    - about: เรื่อง, เกี่ยวกับ;
+    - delete: ลบ, ทิ้ง;
+    - last: ล่าสุด, เมื่อกี้;
+    - reminder: เตือน, อลาร์ม, นัด;
+    - time;
+    - date.
+  - **Order does not matter.** An intent fires when the sentence holds the ideas it needs:
+    - note + (what / all / show) → list notes;
+    - note + (about / find) + a subject → search notes;
+    - note + delete → delete the latest;
+    - reminder + (what / all / show) without a time → list reminders;
+    - time or date words → say the time or the date.
+  - **The bot names what it understood.** A close match is answered as `ถ้าหมายถึง "<the real command>" ก็คือ <answer>`.
+  - **Guard:** long sentences (over 45 characters) and thinking words skip this layer and go to the AI. Thinking words are ควร, ยังไง, อย่างไร, สรุป, แนะนำ, ตอนไหน and similar.
+- **Exact rule fixed:** "มีโน้ตแอร์ไหม" (a subject plus ไหม) is now a search, not the whole list.
+
+### Checks
+- Node: 21 close-match cases pass:
+  - the owner's examples;
+  - other word orders;
+  - searches by subject;
+  - delete;
+  - reminders, time and date;
+  - four sentences that must still go to the AI.
+- The earlier 34 bot cases and 21 note cases still pass.
+- Browser test with a mock bridge: close matches are spoken with the "ถ้าหมายถึง" prefix, an exact command has no prefix, and a thinking question still goes to the AI. No errors.
+- Not tested on the phone.
