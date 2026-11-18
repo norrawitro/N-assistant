@@ -12,6 +12,8 @@
  *   { type: "findNotes", q }      search the notes   { type: "deleteLastNote" }   remove the newest note
  *   { type: "learn", text }       add to the knowledge base   { type: "askKb", q }   look something up in it
  *   { type: "askAgain" }          ask the AI again, skipping the answer memory
+ *   { type: "placeReminder", when: "enter"|"leave", place, text }   remind on arriving at / leaving a place
+ *   { type: "whereNow" }          where the phone is (from GPS-Tracker)
  *   { type: "dayTasks", text }    add to today's tasks   { type: "planToday" }    ask the AI for today's plan
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
@@ -250,6 +252,21 @@
       if (short && /^(ยกเลิก|ไม่ต้องตอบ|ไม่เอาแล้ว)/.test(t)) return { type: "cancel" };
       if (/เสร็จ(หรือ|รึ)?ยัง|ถึงไหนแล้ว|อีกนานไหม|นานไหม|ได้(หรือ|รึ)ยัง/.test(t)) return { type: "aiStatus" };
     }
+
+    // ----- place reminders (GPS-Tracker): "ออกจากบ้านเตือนให้เติมน้ำมัน", "เตือนเติมน้ำมันเมื่อออกจากบ้าน" -----
+    if (/เตือน/.test(t) && /(ออกจาก|ถึง|ไปถึง|มาถึง|กลับถึง)/.test(t) && !parseTime(t, now)) {
+      let m = raw.match(/^(?:ช่วย)?(?:ตั้ง)?(?:เมื่อ|ตอน|พอ|ถ้า|หลัง)?\s*(ออกจาก|ไปถึง|มาถึง|กลับถึง|ถึง)\s*(.+?)\s*(?:แล้ว)?\s*(?:ก็)?\s*(?:ให้|ช่วย)?\s*(?:ตั้ง)?(?:แจ้ง)?เตือน(?:ฉัน|ผม|หนู)?\s*(?:ให้|ว่า|เรื่อง)?\s*(.+)$/);
+      let when, place, text;
+      if (m) { when = m[1] === "ออกจาก" ? "leave" : "enter"; place = m[2]; text = m[3]; }
+      else if ((m = raw.match(/^(?:ช่วย)?(?:ตั้ง)?(?:แจ้ง)?เตือน(?:ฉัน|ผม|หนู)?\s*(?:ให้|ว่า|เรื่อง)?\s*(.+?)\s*(?:เมื่อ|ตอน|พอ|ถ้า|หลัง)\s*(ออกจาก|ไปถึง|มาถึง|กลับถึง|ถึง)\s*(.+)$/))) {
+        when = m[2] === "ออกจาก" ? "leave" : "enter"; text = m[1]; place = m[3];
+      }
+      if (when) {
+        place = cleanNote(String(place).replace(/(แล้ว|นะ|ด้วย)$/g, "")); text = cleanNote(text);
+        if (place && text) return { type: "placeReminder", when, place, text };
+      }
+    }
+    if (/(ตอนนี้|อยู่).{0,6}(อยู่)?(ที่)?ไหน|ฉันอยู่ที่ไหน|ผมอยู่ที่ไหน|อยู่ตรงไหน/.test(t) && t.length <= 30 && !/ไฟล์|บันทึก|โน้ต|จด|กุญแจ/.test(t)) return { type: "whereNow" };
 
     // ----- reminders -----
     if (/(มี|ดู|ขอดู|รายการ).{0,12}เตือน|เตือนอะไร(บ้าง|ไว้)/.test(t)) return { type: "listReminders" };

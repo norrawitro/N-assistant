@@ -480,3 +480,38 @@ Owner phone notes from the same session:
   - the notification Stop button;
   - real Thai TTS at each speed;
   - the clipboard.
+
+## 2026-11-18 (later): reminders by place, using GPS-Tracker
+
+**Owner:** link N-assistant to GPS-Tracker to know where the phone is and remind by place. Example: driving out of home → "อย่าลืมเติมน้ำมันรถ".
+
+### What changed
+- **`PlaceEvents` receiver (new):**
+  - Takes GPS-Tracker's enter/leave/fix/stopped broadcasts. They are protected by the signature permission `com.norrawitro.gpstracker.permission.PLACE_EVENTS`, declared in both apps.
+  - Keeps where the phone is now: place, since when, last update, and the saved place names.
+  - Shows a high-priority notification for each matching place reminder, e.g. "ออกจากบ้าน" / "อย่าลืมเติมน้ำมันรถ".
+- **Reminders page, new card "เตือนตามสถานที่":**
+  - where the phone is now;
+  - a form: what to remind, when (ออกจาก / ถึง), and the place, with a picker of GPS-Tracker's saved names;
+  - the list, each item deletable;
+  - a warning when a name is not one of GPS-Tracker's places.
+  - The rules are stored with the app data and copied to native for the receiver. They are in the JSON backup and its import.
+- **Quick bot:**
+  - "ออกจากบ้านเตือนให้เติมน้ำมันรถ", "เตือนให้เติมน้ำมันเมื่อออกจากบ้าน", "ถึงที่ทำงานเตือนให้…" and "พอกลับถึงบ้านเตือนว่า…" make a place reminder.
+  - "ตอนนี้อยู่ที่ไหน" says the current place and how old the information is.
+
+### Limits
+- GPS-Tracker must be recording.
+- Events come at its fix interval, so a reminder can be late by up to one interval.
+- Place names must match GPS-Tracker's names (spaces and case are ignored).
+
+### Checks
+- Node: 9 place / where cases pass, including that "กุญแจสำรองอยู่ไหน" is not a where question. All earlier bot tests pass.
+- Browser test with a mock bridge:
+  - where now;
+  - voice place reminders, including one for an unknown place with a warning;
+  - the page card with the picker, the form and delete;
+  - the native copy of the rules;
+  - a live event updating the page.
+  - No errors and no sideways scrolling. The read-aloud and memory tests still pass.
+- Not tested on the phone: the broadcast from GPS-Tracker, and the notification.
