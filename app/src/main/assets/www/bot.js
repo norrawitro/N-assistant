@@ -11,6 +11,7 @@
  *   { type: "note", text }        save a note        { type: "listNotes" }        read the latest notes
  *   { type: "findNotes", q }      search the notes   { type: "deleteLastNote" }   remove the newest note
  *   { type: "learn", text }       add to the knowledge base   { type: "askKb", q }   look something up in it
+ *   { type: "askAgain" }          ask the AI again, skipping the answer memory
  *   { type: "dayTasks", text }    add to today's tasks   { type: "planToday" }    ask the AI for today's plan
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
@@ -221,6 +222,9 @@
       const text = cleanNote(raw);
       return text ? { type: "note", text } : { type: "ask", say: "ยังไม่ได้ยิน จะให้จดว่าอะไรครับ", pending };
     }
+
+    // ----- answer memory: "ถาม AI ใหม่" skips a remembered answer -----
+    if (short && /^(ถาม)?(เอไอ|ai|เอ ไอ)?\s*(ใหม่|อีกที|อีกครั้ง)|^ถาม\s*(เอไอ|ai|เอ ไอ)\s*(ใหม่|อีกที|อีกครั้ง)|^ไม่ใช่.{0,6}ถามใหม่/.test(t) && /ถาม|เอไอ|ai/.test(t)) return { type: "askAgain" };
 
     // ----- knowledge base: "สอนว่า…", "เพิ่มความรู้ว่า…"; "ค้นคลังความรู้เรื่อง…" -----
     let kb = raw.match(/^(?:ช่วย)?\s*(?:สอน|เพิ่มความรู้|จำความรู้|บันทึกความรู้|ใส่คลังความรู้)(?:ให้)?(?:หน่อย|ด้วย)?\s*(?:ว่า|เรื่อง)\s*(.+)$/);

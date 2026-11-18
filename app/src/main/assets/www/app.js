@@ -55,14 +55,16 @@
 
   // ---------- tabs ----------
   let currentTab = "live";
-  const TABS = ["kb", "live", "morning", "evening", "chat", "remind", "history", "settings"];
-  const TAB_TITLE = { kb: "คลังความรู้", live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
+  const TABS = ["read", "kb", "live", "morning", "evening", "chat", "remind", "history", "settings"];
+  const TAB_TITLE = { read: "อ่านออกเสียง", kb: "คลังความรู้", live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
     if (!TABS.includes(name)) name = "live";
     $("viewTitle").textContent = name === "live" ? "Live" : `‹ ${TAB_TITLE[name]}`;
     currentTab = name;
     document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
     if (name === "live") renderConvo();
+    $("readBar").hidden = name !== "read";
+    if (name === "read") syncRead();
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     TABS.forEach(t => $("p-" + t).hidden = t !== name);
     if (name === "evening") renderChecks();
@@ -135,7 +137,7 @@
   $("liveSwitch").addEventListener("click", () => {
     if (!A || !A.liveStart) { $("liveStatus").textContent = "Live ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
     if ($("liveSwitch").getAttribute("aria-checked") === "true") { A.liveStop(); setLive(false, "off", "ปิด Live แล้ว"); }
-    else { setLive(true, "listening", "กำลังเปิดไมโครโฟน…"); A.liveStart(); }
+    else { if (readPlaying) setReadUi(false, "หยุดอ่าน (เปิด Live)"); setLive(true, "listening", "กำลังเปิดไมโครโฟน…"); A.liveStart(); }
   });
   handlers.live = p => {
     if (!p) return;
@@ -227,6 +229,98 @@
     try { localStorage.setItem("nassistant.chatMigrated", "1"); } catch {}
   }
 
+  // ---------- read aloud: paste text, read with the phone's Thai voice, sentence highlighted (karaoke) ----------
+  const READ_KEY = "nassistant.read";
+  let readRate = 2, readSentences = [], readAt = -1, readPlaying = false;
+  try { const r = JSON.parse(localStorage.getItem(READ_KEY) || "{}"); if ([1, 1.5, 2, 3].includes(r.rate)) readRate = r.rate; if (r.text) $("readText").value = r.text; } catch {}
+  const saveRead = () => { try { localStorage.setItem(READ_KEY, JSON.stringify({ rate: readRate, text: $("readText").value.slice(0, 200000) })); } catch {} };
+  /** Sentences: split at line breaks and sentence ends; long runs of Thai are cut at spaces near 120 characters. */
+  function splitSentences(text) {
+    const out = [];
+    for (const block of String(text || "").replace(/\r/g, "").split(/\n+/)) {
+      for (let part of block.split(/(?<=[.!?。…])\s+|(?<=[ๆฯ])\s+/)) {
+        part = part.trim();
+        while (part.length > 160) {
+          let cut = part.lastIndexOf(" ", 120);
+          if (cut < 40) cut = part.indexOf(" ", 120);
+          if (cut < 0) cut = 160;
+          out.push(part.slice(0, cut).trim()); part = part.slice(cut).trim();
+        }
+        if (part) out.push(part);
+      }
+    }
+    return out;
+  }
+  function renderReader() {
+    const box = $("reader"); box.textContent = "";
+    readSentences.forEach((s, i) => {
+      const sp = document.createElement("span"); sp.textContent = s; sp.dataset.i = i;
+      if (i === readAt) sp.className = "now"; else if (readAt >= 0 && i < readAt) sp.className = "done";
+      box.appendChild(sp);
+    });
+  }
+  function markSentence(i) {
+    readAt = i;
+    $("reader").querySelectorAll("span").forEach((sp, k) => { sp.className = k === i ? "now" : (i >= 0 && k < i) ? "done" : ""; });
+    const now = $("reader").querySelector("span.now");
+    if (now) now.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function setReadUi(playing, msg) {
+    readPlaying = playing;
+    $("readPlay").textContent = playing ? "หยุด" : "เล่น";
+    $("readPlay").classList.toggle("primary", playing);
+    if (msg !== undefined) $("readStatus").textContent = msg;
+  }
+  function startReading(from = 0) {
+    const text = $("readText").value.trim();
+    if (!text) { setReadUi(false, "ยังไม่มีข้อความ วางข้อความก่อน"); return; }
+    readSentences = splitSentences(text); renderReader();
+    from = Math.max(0, Math.min(from, readSentences.length - 1));
+    saveRead();
+    if (!A || !A.readStart) { setReadUi(false, "อ่านออกเสียงใช้ได้ในแอปบนมือถือเท่านั้น"); markSentence(from); return; }
+    if (liveOn()) { if (A.liveStop) A.liveStop(); setLive(false, "off", "ปิด Live แล้ว (กำลังอ่านออกเสียง)"); }
+    A.readStart(JSON.stringify(readSentences), from, readRate);
+    markSentence(from); setReadUi(true, `กำลังอ่าน ความเร็ว x${readRate}`);
+  }
+  function stopReading() { if (A && A.readStop) A.readStop(); setReadUi(false, "หยุดแล้ว แตะประโยคไหนเพื่ออ่านต่อจากตรงนั้น"); }
+  handlers.read = e => {
+    if (!e) return;
+    if (e.state === "playing") { markSentence(e.index); setReadUi(true, `ประโยคที่ ${e.index + 1} จาก ${e.total} · ความเร็ว x${readRate}`); }
+    else if (e.state === "done") { markSentence(-1); setReadUi(false, "อ่านจบแล้ว"); }
+    else if (e.state === "stopped") setReadUi(false, "หยุดแล้ว แตะประโยคไหนเพื่ออ่านต่อจากตรงนั้น");
+    else if (e.state === "error") setReadUi(readPlaying, e.message || "อ่านออกเสียงไม่ได้");
+  };
+  $("readPaste").addEventListener("click", async () => {
+    let t = "";
+    try { t = A && A.clipboardText ? A.clipboardText() : ""; } catch {}
+    if (!t) { try { t = await navigator.clipboard.readText(); } catch {} }
+    if (!t || !t.trim()) { setReadUi(readPlaying, "คลิปบอร์ดว่าง คัดลอกข้อความมาก่อน"); return; }
+    $("readText").value = t; startReading(0);
+  });
+  $("readPlay").addEventListener("click", () => { if (readPlaying) stopReading(); else startReading(readAt >= 0 ? readAt : 0); });
+  $("readClear").addEventListener("click", () => {
+    if (readPlaying) stopReading();
+    $("readText").value = ""; readSentences = []; readAt = -1; renderReader(); saveRead();
+    setReadUi(false, "ล้างแล้ว");
+  });
+  $("reader").addEventListener("click", e => { const sp = e.target.closest("span[data-i]"); if (sp) startReading(+sp.dataset.i); });
+  $("readText").addEventListener("input", () => { if (!readPlaying) { readSentences = []; readAt = -1; renderReader(); } saveRead(); });
+  document.querySelectorAll("#readBar .speeds button").forEach(b => b.addEventListener("click", () => {
+    readRate = +b.dataset.rate; saveRead();
+    document.querySelectorAll("#readBar .speeds button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    if (readPlaying) startReading(Math.max(0, readAt)); // restart the current sentence at the new speed
+    else $("readStatus").textContent = `ความเร็ว x${readRate}`;
+  }));
+  document.querySelectorAll("#readBar .speeds button").forEach(x => x.setAttribute("aria-pressed", String(+x.dataset.rate === readRate)));
+  /** Back on screen while reading goes on in the background: show where it is. */
+  function syncRead() {
+    let s = null; try { s = A && A.readStatus ? JSON.parse(A.readStatus()) : null; } catch {}
+    if (!s) return;
+    if (s.playing) { if (!readSentences.length) { readSentences = splitSentences($("readText").value); renderReader(); } markSentence(s.index); setReadUi(true); }
+    else if (readPlaying) setReadUi(false, "อ่านจบแล้ว");
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncRead(); });
+
   // ---------- knowledge base: files the owner imports or types; searched by the bot, given to the AI ----------
   const kbFiles = () => (docs.kb && Array.isArray(docs.kb.files)) ? docs.kb.files : [];
   let kbChunks = null; // built from the files when first needed
@@ -309,6 +403,54 @@
   $("kbSearch").addEventListener("click", kbSearchUi);
   $("kbQuery").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); kbSearchUi(); } });
 
+  // ---------- answer memory: questions the AI answered, reused when asked again ----------
+  const memList = () => (docs.memory && Array.isArray(docs.memory.list)) ? docs.memory.list : [];
+  const MEM_MAX = 500, MEM_MATCH = 0.8;
+  /** Answers that change with time, or commands, are not remembered. */
+  const NO_MEMORY = /วันนี้|ตอนนี้|พรุ่งนี้|เมื่อวาน|มะรืน|เดี๋ยวนี้|ล่าสุด|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|ปีนี้|กี่โมง|เวลา|อากาศ|ฝน|ราคา|หุ้น|ทอง|ข่าว|ผลบอล|เตือน|ตั้ง|เปิด|ปิด|จด|บันทึก|ลบ|ข้อมูลเพิ่มเติมจากผู้ใช้/;
+  /** The remembered question that matches `q` both ways (so a short memory does not answer a longer question). */
+  function memFind(q) {
+    const list = memList(); if (!list.length) return null;
+    const top = NKb.search(list.map(m => ({ title: "", text: m.q, m })), q, 3);
+    for (const r of top) {
+      if (r.cover < MEM_MATCH) break;
+      const back = NKb.search([{ title: "", text: q }], r.chunk.m.q, 1)[0];
+      if (back && back.cover >= MEM_MATCH) return r.chunk.m;
+    }
+    return null;
+  }
+  function saveMem(list) { save("memory", { list: list.slice(-MEM_MAX), updatedAt: Date.now() }); renderMem(); }
+  function remember(q, a) {
+    q = String(q || "").trim(); a = String(a || "").trim();
+    if (!q || !a || q.length > 300 || NO_MEMORY.test(q)) return;
+    const old = memFind(q), list = memList().filter(m => !old || m.id !== old.id);
+    list.push({ id: uid(), q, a, at: Date.now(), uses: 0 });
+    saveMem(list);
+  }
+  function renderMem() {
+    const list = memList().slice().reverse(), ol = $("memList");
+    $("memCount").textContent = list.length ? `(${list.length})` : "";
+    ol.textContent = "";
+    if (!list.length) { const li = document.createElement("li"); li.className = "muted small"; li.textContent = "ยังไม่มีคำตอบที่จำไว้"; ol.appendChild(li); return; }
+    for (const m of list.slice(0, 100)) {
+      const li = document.createElement("li");
+      const t = document.createElement("span"); t.className = "kt";
+      const meta = document.createElement("span"); meta.className = "meta";
+      meta.textContent = `${new Date(m.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} · ใช้ซ้ำ ${m.uses || 0} ครั้ง`;
+      const q = document.createElement("b"); q.textContent = m.q;
+      t.append(meta, q, document.createElement("br"), document.createTextNode(m.a));
+      const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.dataset.id = m.id; del.setAttribute("aria-label", "ลบคำตอบนี้");
+      li.append(t, del); ol.appendChild(li);
+    }
+  }
+  $("memList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    const m = memList().find(x => x.id === b.dataset.id);
+    if (m && confirm(`ลบคำตอบที่จำไว้ของคำถามนี้?\n${m.q}`)) saveMem(memList().filter(x => x.id !== m.id));
+  });
+  $("memClear").addEventListener("click", () => { if (memList().length && confirm("ล้างคำตอบที่จำไว้ทั้งหมด?")) saveMem([]); });
+  let lastAsked = ""; // the last question that went to the AI or was answered from memory, for "ถาม AI ใหม่"
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
@@ -321,6 +463,13 @@
     const kbTop = kbFiles().length ? NKb.search(kbAll(), t, 1)[0] : null;
     if (kbTop && kbTop.cover >= KB_DIRECT) {
       liveReply(`จากคลังความรู้ เรื่อง${kbTop.chunk.title} ${NKb.bestLines(kbTop.chunk.text, t)}`, "bot");
+      return;
+    }
+    const mem = NO_MEMORY.test(t) ? null : memFind(t);
+    if (mem) {
+      lastAsked = t;
+      saveMem(memList().map(m => m.id === mem.id ? { ...m, uses: (m.uses || 0) + 1 } : m));
+      liveReply(`เคยตอบไว้เมื่อ ${new Date(mem.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} ว่า ${mem.a}`, "bot");
       return;
     }
     if (liveJob) {
@@ -373,6 +522,10 @@
         if (!lines.length) liveReply("วันนี้ยังไม่มีที่จดไว้ให้ลบครับ", "bot");
         else { const l = lines[lines.length - 1]; removeLine(todayDate(), "notes", l); liveReply(`ลบที่จดล่าสุดแล้วครับ ${l.replace(/^•\s*/, "")}`, "bot"); }
       }
+    } else if (r.type === "askAgain") {
+      if (!lastAsked) liveReply("ยังไม่มีคำถามก่อนหน้าให้ถามใหม่ครับ", "bot");
+      else if (liveJob) liveReply("เอไอกำลังคิดคำถามก่อนหน้าอยู่ครับ รอสักครู่", "bot");
+      else if (askLiveAI(lastAsked)) liveReply(`ส่งคำถาม "${lastAsked}" ให้เอไอตอบใหม่แล้วครับ`, "bot");
     } else if (r.type === "learn") { learn(r.text); liveReply(`จำไว้ในคลังความรู้แล้วครับ ${r.text}`, "bot"); }
     else if (r.type === "askKb") {
       const hit = NKb.search(kbAll(), r.q, 1)[0];
@@ -484,7 +637,8 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     let job;
     try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
     catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return false; }
-    liveJob = { id: job.id, at: Date.now() };
+    liveJob = { id: job.id, at: Date.now(), q: text };
+    lastAsked = text;
     liveJob.tick = setInterval(() => {
       const st = $("liveSwitch").dataset.state;
       if (st === "thinking") $("liveStatus").textContent = thinkingText();
@@ -510,6 +664,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
   }
   function applyLiveResult(res) {
     if (abandonedLive.has(res.id)) return; // already reported as "no answer in 5 minutes"
+    const askedQ = liveJob && res.id === liveJob.id ? liveJob.q : "";
     if (liveJob && res.id === liveJob.id) stopThinking();
     // Otherwise it belongs to an earlier question (for example from before the app was reopened): still log it.
     if (!res.ok) {
@@ -537,6 +692,8 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     }
     if (!reply) reply = made.length ? "ตั้งการเตือนให้แล้ว" : "ขอโทษ ไม่ได้คำตอบจาก AI ลองพูดใหม่อีกครั้ง";
     liveReply(reply);
+    // Remember plain answers (no reminders set, no page opened) for the next time the same thing is asked.
+    if (res.ok && askedQ && !adds.length && !open) remember(askedQ, reply);
     if (made.length) addConvo("note", "ตั้งการเตือนแล้ว: " + made.join(", "));
     if (open && TABS.includes(open)) showTab(open);
     sendQueued();
@@ -999,7 +1156,7 @@ ${contextText(date)}
   const csvCell = v => `"${String(v ?? "").replace(/"/g, '""').replace(/\r?\n/g, " / ")}"`;
   function buildExport(kind) {
     const days = allDays();
-    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), kb: kbFiles(), days }, null, 2);
+    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), kb: kbFiles(), memory: memList(), days }, null, 2);
     if (kind === "csv") {
       const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก AI"];
       const rows = days.map(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
@@ -1043,6 +1200,11 @@ ${contextText(date)}
         if (A) A.setReminders(JSON.stringify(merged));
       }
       if (Array.isArray(data.notes)) { docs.notes = { list: data.notes }; migrateNotes(); } // backups from v1.0.23-1.0.25
+      if (Array.isArray(data.memory)) {
+        const have = new Set(memList().map(m => m.id));
+        docs.memory = { list: [...memList(), ...data.memory.filter(m => m && m.id && m.q && m.a && !have.has(m.id))].slice(-MEM_MAX), updatedAt: Date.now() };
+        renderMem();
+      }
       if (Array.isArray(data.kb)) {
         const have = new Set(kbFiles().map(f => f.id));
         docs.kb = { files: [...kbFiles(), ...data.kb.filter(f => f && f.id && f.text && !have.has(f.id))], updatedAt: Date.now() };
@@ -1276,7 +1438,7 @@ ${contextText(date)}
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
   migrateNotes(); migrateChat();
-  hydrate(); renderHistory(); renderKb(); setLiveMode(liveMode); showTab("live");
+  hydrate(); renderHistory(); renderKb(); renderMem(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

@@ -179,6 +179,14 @@ public class MainActivity extends Activity {
     }
 
     /** Hands a finished AI job to the page if the app is on screen. Returns false when nobody is looking. */
+    /** Read-aloud progress for the page, if it is on screen: {state, index, total, message}. */
+    static void readEvent(String state, int index, int total, String message) {
+        MainActivity a = visible;
+        if (a == null || !a.pageReady) return;
+        a.emit("read", "{\"state\":" + JSONObject.quote(state) + ",\"index\":" + index + ",\"total\":" + total
+                + ",\"message\":" + JSONObject.quote(message == null ? "" : message) + "}");
+    }
+
     static boolean deliver(JSONObject res) {
         MainActivity a = visible;
         if (a == null || !a.pageReady) return false;
@@ -411,6 +419,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void liveStart() {
             main.post(() -> {
+                ReadAloudService.stop(MainActivity.this); // one voice at a time
                 if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
                 } else {
@@ -464,6 +473,45 @@ public class MainActivity extends Activity {
                 Intent i = getPackageManager().getLaunchIntentForPackage(TermuxOllama.PKG);
                 if (i != null) startActivity(i);
             });
+        }
+
+        // ---------- read aloud ----------
+
+        /** Starts reading the sentences (a JSON array of strings) from `from`, at `rate` (1, 1.5, 2, 3). */
+        @JavascriptInterface
+        public void readStart(String sentencesJson, int from, float rate) {
+            main.post(() -> {
+                try {
+                    if (live != null && live.isOn()) live.stop(); // one voice at a time
+                    ReadAloudService.start(MainActivity.this, new org.json.JSONArray(sentencesJson), from, rate);
+                } catch (Exception e) {
+                    readEvent("error", -1, 0, "เริ่มอ่านไม่ได้: " + e.getMessage());
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void readStop() {
+            main.post(() -> ReadAloudService.stop(MainActivity.this));
+        }
+
+        /** {playing, index, total} so the page can show where reading is after coming back. */
+        @JavascriptInterface
+        public String readStatus() {
+            return "{\"playing\":" + ReadAloudService.playing + ",\"index\":" + ReadAloudService.index + ",\"total\":" + ReadAloudService.total + "}";
+        }
+
+        /** Text on the clipboard, read by Android (the WebView cannot always read it itself). */
+        @JavascriptInterface
+        public String clipboardText() {
+            try {
+                android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+                if (cm == null || !cm.hasPrimaryClip() || cm.getPrimaryClip().getItemCount() == 0) return "";
+                CharSequence t = cm.getPrimaryClip().getItemAt(0).coerceToText(MainActivity.this);
+                return t == null ? "" : t.toString();
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         @JavascriptInterface

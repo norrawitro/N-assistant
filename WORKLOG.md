@@ -412,3 +412,71 @@ Owner phone notes from the same session:
   - No errors and no sideways scrolling.
 - **Test-tool note:** the browser tool could not attach files with Thai file names, so ASCII names were used. On the phone the system picker gives the file directly.
 - **Not tested on the phone:** the file picker and real files.
+
+## 2026-11-18: read aloud ("อ่านออกเสียง") and answer memory
+
+**Requests:**
+- **Read aloud:** relayed by Manager from the owner, then confirmed by the owner in this session. Add a read-aloud menu like the owner's offline tts-app:
+  - paste & play, play/stop, clear;
+  - karaoke highlight;
+  - speeds x1, x1.5, x2 and x3, default x2;
+  - on-device Thai TTS only;
+  - every button visible on a phone (the standalone tts-app lost buttons when its controls moved to the top).
+- **Background reading:** the owner answered yes to reading on with the screen off or the app in the background.
+- **Answer memory:** the owner answered yes. Remember what the AI answered and reuse it next time, without the AI.
+- **Release:** none until the owner says so.
+
+### Read aloud
+- **`ReadAloudService` (new):** a foreground service of type mediaPlayback.
+  - It uses the phone's TextToSpeech in Thai, with the media audio stream. There is no internet and no server.
+  - It queues the sentences one by one, with ids `session:index`. A restart, a new speed or a tap on another sentence ignores callbacks from the previous run.
+  - A partial wake lock (at most 3 hours) keeps it reading with the screen off.
+  - Its notification shows "ประโยคที่ N จาก M · ความเร็ว xR". It has a "หยุด" button and opens the read page.
+- **Menu ☰ → "อ่านออกเสียง" page:**
+  - A text box (the text is remembered).
+  - The sentences under it, one tappable span each. The one being read is highlighted, earlier ones are dimmed, and it scrolls along. Tapping a sentence reads from there.
+  - **Splitting:** at line breaks, at sentence ends, and at ๆ/ฯ followed by a space. Long Thai runs are cut at a space near 120 characters.
+- **Control bar fixed to the BOTTOM of the screen** (above the system navigation and safe area):
+  - "วางและเล่น", "เล่น/หยุด" and "ล้าง" on one row;
+  - x1, x1.5, x2 and x3 on the next (default x2, remembered).
+  - Changing the speed while reading restarts the current sentence at the new speed.
+  - The bar shows only on this page.
+- **Clipboard:** "วางและเล่น" reads it through Android's ClipboardManager (bridge `clipboardText`), with the WebView clipboard as a fallback.
+- **One voice at a time:** starting to read turns Live off, and starting Live stops reading.
+- **Returning to the app** while reading in the background shows the current sentence (`readStatus`).
+- **Manifest:** `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the service.
+
+### Answer memory
+- **What is kept:** every plain AI answer in Live (no reminder set, no page opened) is stored as question → answer. The newest 500 are kept on the phone, and they are in the JSON backup and its import.
+- **When it answers:**
+  - Before asking the AI, after the bot rules and the knowledge base, a remembered question that matches the new one both ways (80% or more) is answered at once: "เคยตอบไว้เมื่อ <date> ว่า …". A use counter goes up.
+  - Matching both ways keeps a short memory from answering a longer question.
+- **Not remembered:**
+  - questions about now or a date (วันนี้, ตอนนี้, พรุ่งนี้, กี่โมง…);
+  - weather, prices, gold, shares, news, scores;
+  - commands (เตือน, ตั้ง, เปิด, ปิด, จด, บันทึก, ลบ);
+  - follow-up "extra information" questions;
+  - errors.
+- **"ถาม AI ใหม่" / "ถามเอไออีกที" / "ถามใหม่"** sends the last question to the AI again, skipping memory. The new answer replaces the old one.
+- **Managing it:** the knowledge page has a "คำตอบที่จำไว้" card: the list with the question, answer, date and uses; × deletes one; "ล้างทั้งหมด" clears all.
+
+### Checks
+- **Browser, read aloud, at 320×568, 360×640 and 400×860:**
+  - every one of the 7 buttons is inside the screen and at least 44×40 px;
+  - paste & play reads the clipboard, splits 3 sentences and highlights the one being read;
+  - x3 restarts the current sentence; stop; a tap on sentence 3 starts there; clear;
+  - the speed is remembered after a reload;
+  - the bar is hidden on Live;
+  - no errors and no sideways scrolling.
+- **Browser, answer memory:**
+  - first ask → AI; the same question and a close one → memory, no AI;
+  - a different question → AI;
+  - "ถาม AI ใหม่" → AI again, and the new answer replaces the old one;
+  - a question with "วันนี้" is not remembered; an answer that set a reminder is not remembered;
+  - the list and delete work.
+- **Node:** every bot rule test passes, with the "ถาม AI ใหม่" forms added.
+- **Not tested on the phone:**
+  - the service with the screen off;
+  - the notification Stop button;
+  - real Thai TTS at each speed;
+  - the clipboard.
