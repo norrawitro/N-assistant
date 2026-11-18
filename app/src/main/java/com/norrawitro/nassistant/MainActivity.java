@@ -140,7 +140,22 @@ public class MainActivity extends Activity {
                 deliverRing();
             }
         });
-        setContentView(web);
+        // Android 15 draws apps under the status bar, camera cutout, navigation bar and keyboard, and ignores
+        // adjustResize. Pad a holder by those insets so no control ends up hidden behind them.
+        android.widget.FrameLayout holder = new android.widget.FrameLayout(this);
+        holder.setBackgroundColor(0xFF111418);
+        holder.addView(web, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        holder.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout());
+                android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+                v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            }
+            return insets;
+        });
+        setContentView(holder);
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl(START_URL);
     }
@@ -511,6 +526,27 @@ public class MainActivity extends Activity {
                 if (TermuxOllama.permitted(MainActivity.this)) emit("termuxPerm", "true");
                 else if (!TermuxOllama.supportsRunCommand(MainActivity.this)) emit("termuxPerm", "\"unsupported\"");
                 else requestPermissions(new String[]{TermuxOllama.PERMISSION}, REQ_TERMUX);
+            });
+        }
+
+        @JavascriptInterface
+        public void installThaiVoice() {
+            main.post(() -> {
+                try { startActivity(new Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)); }
+                catch (Exception e) {
+                    try { startActivity(new Intent("com.android.settings.TTS_SETTINGS")); } catch (Exception ignored) {}
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void installSpeechEngine() {
+            main.post(() -> {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.tts"))); }
+                catch (Exception e) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.tts"))); }
+                    catch (Exception ignored) {}
+                }
             });
         }
 

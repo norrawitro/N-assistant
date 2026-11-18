@@ -98,7 +98,7 @@ body.reading .clock{display:none}
 .speeds button{flex:1 1 0;min-width:52px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 1rem var(--f-display);padding:10px 4px;border-radius:10px;cursor:pointer}
 .speeds button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 #readStatus{margin:0;min-height:1.4em}
-.readbox{position:relative;height:60vh;min-height:150px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.readbox{position:relative;height:60vh;min-height:100px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
 .readbox textarea{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:var(--r);resize:none;padding:14px;font-size:1.05rem;line-height:1.8;background:transparent;color:var(--ink)}
 .reader{position:absolute;inset:0;overflow-y:auto;padding:0 14px;line-height:1.9;font-size:1.08rem;overflow-wrap:anywhere;scroll-behavior:smooth}
 .reader span{padding:2px 3px;border-radius:6px;cursor:pointer;-webkit-box-decoration-break:clone;box-decoration-break:clone}
@@ -275,8 +275,8 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
   <section class="panel" id="p-read" role="tabpanel" hidden>
     <div class="readbar" id="readBar">
       <div class="rb-row">
-        <button class="btn primary" id="readPaste" type="button">วางและเล่น</button>
-        <button class="btn" id="readPlay" type="button">เล่น</button>
+        <button class="btn primary" id="readPaste" type="button">📋 วางและเล่น</button>
+        <button class="btn" id="readPlay" type="button">▶ เล่น</button>
         <button class="btn" id="readEdit" type="button">แก้ไข</button>
         <button class="btn" id="readClear" type="button">ล้าง</button>
       </div>
@@ -287,6 +287,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <button type="button" data-rate="3" aria-pressed="false">x3</button>
       </div>
       <p class="small muted" id="readStatus">วางหรือพิมพ์ข้อความ แล้วกดเล่น อ่านด้วยเสียงไทยของเครื่อง ไม่ใช้เน็ต ปิดจอแล้วยังอ่านต่อ</p>
+      <button class="btn" id="readFix" type="button" hidden></button>
     </div>
     <!-- One box: a text field while editing, the same box shows the sentences while reading. -->
     <div class="readbox" id="readBox">
