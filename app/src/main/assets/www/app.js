@@ -403,6 +403,8 @@
       try {
         if (file.size > 2 * 1024 * 1024) { skipped++; continue; }
         const text = await file.text();
+        // A memory file ("ถาม: … / ตอบ: …", like ความจำ.md) goes back into the answer memory.
+        if (parseMemText(text).length >= 1 && /^\s*#?\s*ความจำ|^\s*ถาม\s*[:：]/m.test(text)) { importMemText(text); n++; continue; }
         if (addKbFile(file.name.replace(/\.(md|markdown|txt)$/i, ""), text, "file")) n++; else skipped++;
       } catch { skipped++; }
     }
@@ -447,7 +449,64 @@
     }
     return null;
   }
-  function saveMem(list) { save("memory", { list: list.slice(-MEM_MAX), updatedAt: Date.now() }); renderMem(); }
+  function saveMem(list) { save("memory", { list: list.slice(-MEM_MAX), updatedAt: Date.now() }); renderMem(); scheduleMemFile(); }
+  /** The answer memory as a readable text file (Markdown), kept in Documents/N-assistant/ความจำ.md. */
+  const MEM_FILE = "ความจำ.md";
+  function memText() {
+    const lines = ["# ความจำของ N-assistant", "", "คำถามที่ AI เคยตอบ บอทใช้ตอบซ้ำได้ทันที แก้ไขไฟล์นี้แล้วนำเข้าที่ คลังความรู้ → นำเข้าไฟล์ ได้", ""];
+    for (const m of memList()) lines.push(`## ${new Date(m.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}`, `ถาม: ${m.q}`, `ตอบ: ${m.a}`, "");
+    return lines.join("\n");
+  }
+  let memFileTimer = null;
+  function scheduleMemFile() {
+    clearTimeout(memFileTimer);
+    memFileTimer = setTimeout(() => { try { if (A && A.writeTextFile) A.writeTextFile(MEM_FILE, memText()); } catch {} }, 1500);
+  }
+  /** Reads "ถาม: … / ตอบ: …" pairs from a text file (for example an edited ความจำ.md). */
+  function parseMemText(text) {
+    const out = []; let q = null;
+    for (const raw of String(text || "").replace(/\r/g, "").split("\n")) {
+      const line = raw.trim(), mq = line.match(/^(?:ถาม|Q)\s*[:：]\s*(.+)$/i), ma = line.match(/^(?:ตอบ|A)\s*[:：]\s*(.+)$/i);
+      if (mq) q = mq[1].trim();
+      else if (ma && q) { out.push({ q, a: ma[1].trim() }); q = null; }
+    }
+    return out;
+  }
+  function importMemText(text) {
+    const pairs = parseMemText(text); if (!pairs.length) return 0;
+    let list = memList().slice();
+    for (const p of pairs) {
+      const i = list.findIndex(m => m.q === p.q);
+      if (i >= 0) list[i] = { ...list[i], a: p.a }; else list.push({ id: uid(), q: p.q, a: p.a, at: Date.now(), uses: 0 });
+    }
+    saveMem(list);
+    return pairs.length;
+  }
+
+  // ---------- built-in basic knowledge (faq.js): answered without AI from day one ----------
+  const FAQ_MATCH = 0.75;
+  let faqIndex = null;
+  // Filler words that change nothing in a how-to question ("จะ…ยังไง", "วิธีการ…").
+  const faqClean = x => String(x).replace(/(วิธีการ|วิธี|จะ|ต้อง|เลย|หน่อย|ล่ะ|นะ)/g, " ");
+  /** The basic entry whose question matches best both ways (the weaker of the two directions counts). */
+  function faqFind(q) {
+    const faq = window.NFaq || []; if (!faq.length) return null;
+    if (!faqIndex) { faqIndex = []; faq.forEach((f, i) => f.q.forEach(v => faqIndex.push({ title: "", text: faqClean(v), i }))); }
+    const qc = faqClean(q);
+    let best = null, bestScore = 0;
+    for (const r of NKb.search(faqIndex, qc, 12)) {
+      if (r.cover < FAQ_MATCH) break;
+      const back = NKb.search([{ title: "", text: qc }], r.chunk.text, 1)[0];
+      const score = Math.min(r.cover, back ? back.cover : 0);
+      if (score > bestScore) { bestScore = score; best = faq[r.chunk.i]; }
+    }
+    return bestScore >= FAQ_MATCH ? best : null;
+  }
+  function renderFaq() {
+    const faq = window.NFaq || [], ol = $("faqList"); ol.textContent = "";
+    $("faqCount").textContent = faq.length ? `(${faq.length} เรื่อง)` : "";
+    for (const f of faq) { const li = document.createElement("li"); const t = document.createElement("span"); t.className = "kt"; const b = document.createElement("b"); b.textContent = f.q[0]; t.append(b, document.createElement("br"), document.createTextNode(f.a)); li.appendChild(t); ol.appendChild(li); }
+  }
   function remember(q, a) {
     q = String(q || "").trim(); a = String(a || "").trim();
     if (!q || !a || q.length > 300 || NO_MEMORY.test(q)) return;
@@ -555,6 +614,46 @@
     else liveReply("ครับ ว่ามาเลย", "bot");
   };
 
+  // ---------- going back to an older version: back up, download, uninstall, install ----------
+  let olders = [], dgBackupPath = "";
+  $("dgList").addEventListener("click", () => {
+    if (!A || !A.listOlderVersions) { $("dgVersions").textContent = "ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
+    $("dgVersions").textContent = "กำลังดูรายการเวอร์ชัน…"; A.listOlderVersions();
+  });
+  handlers.olderVersions = list => {
+    const box = $("dgVersions"); box.textContent = "";
+    if (!list || list.error || !Array.isArray(list)) { box.textContent = "ดูรายการไม่สำเร็จ: " + ((list && list.error) || ""); return; }
+    olders = list.slice(0, 15);
+    if (!olders.length) { box.textContent = "ไม่มีเวอร์ชันเก่าให้ย้อนกลับ"; return; }
+    olders.forEach((v, i) => {
+      const d = document.createElement("div"); d.className = "day";
+      const restore = v.versionCode >= 28 ? "กู้ข้อมูลได้" : "เวอร์ชันนี้ยังไม่มีปุ่มกู้ข้อมูล";
+      d.innerHTML = `<span class="d">${esc(v.version)}</span><div class="s">${esc(new Date(v.date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }))}<div class="small muted">${esc(restore)}</div></div>`;
+      const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = "ย้อนไปเวอร์ชันนี้"; b.dataset.dg = i;
+      d.appendChild(b); box.appendChild(d);
+    });
+  };
+  $("dgVersions").addEventListener("click", e => {
+    const b = e.target.closest("button[data-dg]"); if (!b) return;
+    const v = olders[+b.dataset.dg]; if (!v) return;
+    if (!confirm(`ย้อนไปเวอร์ชัน ${v.version}?\n\nแอปจะสำรองข้อมูล แล้วดาวน์โหลดเวอร์ชันนี้ไว้ในโฟลเดอร์ Download จากนั้นต้องถอนแอปนี้และติดตั้งไฟล์ที่ดาวน์โหลดเอง\n\nหลังถอนแอป ข้อมูลในแอปจะหายจากเครื่อง (มีไฟล์สำรองไว้ให้) API key และ token ต้องใส่ใหม่`)) return;
+    $("dgSteps").hidden = false; $("dgHow").hidden = true; $("dgUninstall").hidden = true;
+    $("dgMsg").textContent = "กำลังสำรองข้อมูล…";
+    dgBackupPath = A && A.saveBackupFile ? A.saveBackupFile(buildExport("json")) : "";
+    if (!dgBackupPath) { $("dgMsg").textContent = "สำรองข้อมูลไม่สำเร็จ จึงยังไม่ย้อนเวอร์ชัน ลองส่งออก JSON เองที่หน้าประวัติก่อน"; return; }
+    $("dgMsg").textContent = "สำรองแล้ว กำลังดาวน์โหลด…";
+    A.prepareDowngrade(v.url, v.name || `n-assistant-${v.version}.apk`);
+  });
+  handlers.downgrade = d => {
+    if (!d) return;
+    if (d.step === "error") { $("dgMsg").textContent = "ไม่สำเร็จ: " + (d.message || "") + " ข้อมูลในแอปยังอยู่ครบ"; return; }
+    if (d.step !== "ready") { $("dgMsg").textContent = d.message || ""; return; }
+    $("dgMsg").textContent = "พร้อมแล้ว ทำตามขั้นตอนนี้";
+    $("dgBackup").textContent = dgBackupPath; $("dgFile").textContent = d.file || "";
+    $("dgHow").hidden = false; $("dgUninstall").hidden = false;
+  };
+  $("dgUninstall").addEventListener("click", () => { if (A && A.uninstallSelf) A.uninstallSelf(); });
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
@@ -576,6 +675,8 @@
       liveReply(`เคยตอบไว้เมื่อ ${new Date(mem.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} ว่า ${mem.a}`, "bot");
       return;
     }
+    const basic = faqFind(t);
+    if (basic) { liveReply(basic.a, "bot"); return; }
     if (liveJob) {
       liveQueue.push(t);
       liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
@@ -1573,7 +1674,7 @@ ${contextText(date)}
   pullResults();
   migrateNotes(); migrateChat();
   if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(placeRules())); // native copy for the event receiver
-  hydrate(); renderHistory(); renderKb(); renderMem(); renderWake(); setLiveMode(liveMode); showTab("live");
+  hydrate(); renderHistory(); renderKb(); renderMem(); renderFaq(); renderWake(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

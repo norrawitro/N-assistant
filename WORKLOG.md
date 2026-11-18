@@ -609,3 +609,68 @@ Owner phone notes from the same session:
 - the same question then comes from memory;
 - a cancelled question's answer after a reopen is ignored.
 - The earlier memory and Live-off tests still pass.
+
+## 2026-11-18 (later): going back to an older version
+
+**Why:** the owner now lets every finished change be released at once, because "we can go back to an older version". GPS-Tracker had that button, N-assistant did not, so I added it, with the owner's go-ahead for improvements I see fit.
+
+### What was built (Settings → "ย้อนกลับไปเวอร์ชันเก่า")
+- **"ดูเวอร์ชันเก่า"** lists up to 15 older releases that have an APK (`Updater.olderReleases`, from the GitHub releases API). Each one says whether that version can restore a backup: v1.0.28 and later have a working "นำเข้าไฟล์ JSON".
+- **Choosing a version** asks first, saying what is lost. Then:
+  1. The app writes the full JSON backup (settings, reminders, place reminders, knowledge base, answer memory, all days) to `Documents/N-assistant/backup/` through MediaStore, so it survives the uninstall. API keys and tokens are not included. If the backup fails, nothing else happens.
+  2. Live, read aloud and the wake word are stopped. The APK is downloaded into Download with Android's download manager, with progress shown.
+  3. The steps are shown, with a "ถอนแอปนี้" button that opens Android's uninstall prompt (`REQUEST_DELETE_PACKAGES`). Then the owner installs the file from Download, and restores with ประวัติ → นำเข้าไฟล์ JSON.
+- **If anything fails before the uninstall,** the app says so, and the data in the app is untouched.
+
+### Checks
+- Browser test with a mock bridge:
+  - the list with restore notes;
+  - the confirm;
+  - the backup content, which has every section and no API key;
+  - the download progress, then the ready steps with the backup path and file;
+  - the uninstall call.
+  - No errors and no sideways scrolling. The read-aloud and wake-word tests still pass.
+- Java compiles in CI.
+- Not tested on the phone.
+
+## 2026-11-18 (later): built-in basic answers, and the memory as a text file
+
+**Owner:**
+- Put basic answers linked to basic questions into the app, so it works at a basic level from the start. It then learns more by talking: what it does not know goes to the AI once, and the answer is kept for next time.
+- Is all memory inside the app? Can it be saved as a text file?
+
+### Answers to the questions
+- **Where the memory is:** everything is in the N-assistant app on the phone (WebView storage). Nothing is kept in the AI. The AI only receives the question and some context when asked.
+- **Text file:** yes. Done below.
+
+### Built-in basic knowledge (`faq.js`, new)
+- **35 topics**, each with several ways of asking and one spoken answer:
+  - what the assistant can do and how it learns;
+  - how to use each feature: reminders, place reminders, notes, read aloud, wake word, knowledge base, going back a version, updates, AI settings, a slow AI, where data is kept;
+  - small talk;
+  - Thai emergency numbers (1669 medical, 191 police, 199 fire, 1155 tourist police);
+  - simple facts that do not change: days in a year/week, hours in a day, km/m, mile, kg/lb, rai/ngan/wa, boiling point, water per day, hours of sleep, the capital of Thailand.
+- **Order in Live:**
+  1. bot rules;
+  2. knowledge base;
+  3. answer memory;
+  4. **basic knowledge**;
+  5. the AI.
+  The owner's own data always comes first, and the basics are the floor.
+- **Matching** uses the same letter-pair search, both ways, and the weaker direction must reach 75%. A few filler words (จะ, วิธี, วิธีการ, ต้อง, เลย…) are ignored. So "ตั้งเตือนยังไงครับ" and "วิธีการตั้งเตือน" find the how-to, while "ตั้งเตือนพรุ่งนี้แปดโมง…" still sets a reminder.
+- **Knowledge page:** a "ความรู้พื้นฐานในแอป" card lists them.
+
+### Memory as a text file
+- **Writing it:** every change to the answer memory rewrites `Documents/N-assistant/ความจำ.md` (Markdown: date heading, then "ถาม: …" and "ตอบ: …"), a moment after the change. It goes through MediaStore and overwrites the same file (bridge `writeTextFile`).
+- **Reading it back:** importing a file with "ถาม:/ตอบ:" pairs on the knowledge page (for example an edited ความจำ.md) puts them back into the memory. An existing question gets its answer replaced; new ones are added.
+
+### Checks
+- Node: 14 basic-knowledge cases pass, including reworded questions and 4 that must not match (trip planning, gold price, a real reminder, nautical mile).
+- Browser test with a mock bridge:
+  - a how-to and the emergency numbers answered with no AI job;
+  - a real reminder still set;
+  - an AI answer written to ความจำ.md;
+  - an edited memory file imported (2 pairs, one answer replaced);
+  - both answered from memory afterwards.
+  - No errors and no sideways scrolling. The earlier tests still pass.
+- Not tested on the phone, including the file in Documents.
