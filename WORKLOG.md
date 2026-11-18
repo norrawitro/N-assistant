@@ -515,3 +515,48 @@ Owner phone notes from the same session:
   - a live event updating the page.
   - No errors and no sideways scrolling. The read-aloud and memory tests still pass.
 - Not tested on the phone: the broadcast from GPS-Tracker, and the notification.
+
+## 2026-11-18 (later): wake word, and "read what I copied" in Live
+
+**Owner:**
+- **Wake word:** use a wake word to call the assistant to ask a question or take a note. No API key, because N-assistant itself does the work. The owner presses the power button first, then says the wake word.
+- **Clipboard:** in Live, ask it to read aloud the text copied to the clipboard.
+
+### Wake word
+- **`WakeWordService` (new):** a foreground service of type microphone. It is started from the Live screen, because Android only allows a microphone service to start while the app is visible.
+  - It listens only while the screen is on, for 30 s after the screen turns on (the power button), with the phone's own speech recognizer in Thai.
+  - When the screen goes off, it stops listening at once.
+  - While Live itself has the microphone, it leaves it alone. Starting Live pauses it.
+- **Only the wake word counts:**
+  - A sentence counts only if it **starts** with the wake word (up to 6 characters before it are allowed, e.g. "เฮ้"). The default word is "ผู้ช่วย" and can be changed on the Live screen.
+  - Everything else is ignored, not stored, and not sent anywhere. A sentence with the word in the middle ("ฉันอยากได้ผู้ช่วยทำงานบ้าน") does not wake it.
+- **When the wake word is heard:**
+  - The app opens: straight away if it is on screen, otherwise through a full-screen intent, which opens over the lock screen because the activity already has showWhenLocked.
+  - Live turns on in "บอท + AI" mode.
+  - The rest of the sentence goes to the bot, then the AI, as if spoken in Live ("ผู้ช่วย จดว่าซื้อนม" writes the note). If only the wake word was said, it answers "ครับ ว่ามาเลย" and listens.
+- **Notification:** "โหมดคำปลุกเปิดอยู่", with a "หยุดฟัง" button. If the service was killed, it starts again when the app comes on screen.
+- **Manifest:** `FOREGROUND_SERVICE_MICROPHONE` and the service.
+
+### Read the clipboard from Live
+- **Commands:** "อ่านคลิปบอร์ด", "อ่านข้อความที่ก๊อปไว้ให้ฟัง" and "ช่วยอ่านที่คัดลอกไว้ให้ฟัง". They read Android's clipboard and open the read-aloud page, which starts reading (Live turns off, one voice at a time).
+- **Empty clipboard:** the bot says so.
+
+### Checks
+- **Java:** the wake-word parsing was checked with sample sentences:
+  - "ผู้ช่วย จดว่า…" and "ผู้ช่วยตอนนี้กี่โมง" give the rest;
+  - the wake word alone gives "";
+  - "เฮ้ผู้ช่วย ครับ …" strips the polite word;
+  - other sentences, and the word in the middle, do not wake it;
+  - a two-word wake word works.
+- **Browser, with a mock bridge:**
+  - the wake toggle on and off;
+  - changing the word restarts the service with the new word;
+  - a wake event with a command, from another page, opens Live, starts it and writes the note;
+  - a wake with the word only is answered;
+  - the clipboard is read into the read-aloud page and reading starts, and an empty clipboard is answered.
+  - The earlier tests all pass.
+- **Not tested on the phone:**
+  - listening after the power button, and on the lock screen;
+  - the full-screen open;
+  - the recognizer's start beep.
+- **Note:** on Android 14 the full-screen permission may need to be allowed in settings. The existing permission warning covers it.

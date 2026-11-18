@@ -495,6 +495,38 @@
   });
   handlers.place = w => { where = w; renderPlaceRules(); };
 
+  // ---------- wake word: press power, say "ผู้ช่วย …" (phone's own recognizer, screen on only) ----------
+  function renderWake(st) {
+    if (!st) { try { st = A && A.wakeStatus ? JSON.parse(A.wakeStatus()) : null; } catch { st = null; } }
+    const on = !!(st && st.on);
+    $("wakeBtn").setAttribute("aria-pressed", String(on));
+    $("wakeBtn").textContent = on ? "โหมดคำปลุก: เปิด" : "โหมดคำปลุก: ปิด";
+    if (st && st.word && document.activeElement !== $("wakeWord")) $("wakeWord").value = st.word;
+    const w = $("wakeWord").value.trim() || "ผู้ช่วย";
+    $("wakeHint").textContent = on
+      ? `ฟังอยู่ตอนจอเปิด: กดปุ่ม power แล้วพูด "${w}…" ภายใน 30 วินาที เช่น "${w} จดว่าซื้อนม" จอดับแล้วหยุดฟัง`
+      : `เปิดแล้ว: กดปุ่ม power แล้วพูด "${w}…" ภายใน 30 วินาที ประโยคที่ไม่ขึ้นต้นด้วยคำนี้จะไม่ถูกเก็บหรือส่งไปไหน`;
+  }
+  $("wakeBtn").addEventListener("click", () => {
+    if (!A || !A.wakeStart) { $("wakeHint").textContent = "ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
+    const on = $("wakeBtn").getAttribute("aria-pressed") === "true";
+    if (on) A.wakeStop(); else A.wakeStart($("wakeWord").value.trim() || "ผู้ช่วย");
+  });
+  $("wakeWord").addEventListener("change", () => {
+    if (A && A.wakeStart && $("wakeBtn").getAttribute("aria-pressed") === "true") A.wakeStart($("wakeWord").value.trim() || "ผู้ช่วย");
+    else renderWake({ on: false, word: $("wakeWord").value.trim() });
+  });
+  handlers.wakeState = st => renderWake(st);
+  /** The wake word was heard (the app may just have opened over the lock screen). */
+  handlers.wake = rest => {
+    showTab("live");
+    if (liveMode !== "ai") setLiveMode("ai");
+    if (!liveOn() && A && A.liveStart) { setLive(true, "listening", "ได้ยินคำปลุกแล้ว"); A.liveStart(); }
+    const t = String(rest || "").trim();
+    if (t) { addConvo("me", t); handleHeard(t); }
+    else liveReply("ครับ ว่ามาเลย", "bot");
+  };
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
@@ -570,6 +602,13 @@
       const pr = addPlaceRule(r.when, r.place, r.text);
       const known = ((readWhere() || {}).places || []).some(n => n.replace(/\s+/g, "") === pr.place.replace(/\s+/g, ""));
       liveReply(`ตั้งแล้วครับ เมื่อ${whenLabel(pr.when)}${pr.place} จะเตือนว่า ${pr.text}` + (known ? "" : ` แต่ยังไม่พบสถานที่ชื่อ ${pr.place} ใน GPS-Tracker ชื่อต้องตรงกับที่ตั้งไว้ในแอปนั้นครับ`), "bot");
+    } else if (r.type === "readClipboard") {
+      let txt = ""; try { txt = A && A.clipboardText ? A.clipboardText() : ""; } catch {}
+      if (!txt || !txt.trim()) { liveReply("คลิปบอร์ดว่างอยู่ครับ คัดลอกข้อความมาก่อนแล้วสั่งใหม่", "bot"); return; }
+      addConvo("bot", `อ่านข้อความที่คัดลอกไว้ให้ฟังครับ (${txt.trim().length.toLocaleString("th-TH")} ตัวอักษร) หยุดได้ที่หน้าอ่านออกเสียงหรือแจ้งเตือน`);
+      $("readText").value = txt;
+      showTab("read");
+      startReading(0); // turns Live off: one voice at a time
     } else if (r.type === "whereNow") {
       readWhere(); liveReply(whereText(), "bot");
     } else if (r.type === "askAgain") {
@@ -1494,7 +1533,7 @@ ${contextText(date)}
   pullResults();
   migrateNotes(); migrateChat();
   if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(placeRules())); // native copy for the event receiver
-  hydrate(); renderHistory(); renderKb(); renderMem(); setLiveMode(liveMode); showTab("live");
+  hydrate(); renderHistory(); renderKb(); renderMem(); renderWake(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));
     if (!docs.settings) pushAlarms(); else syncPrep();

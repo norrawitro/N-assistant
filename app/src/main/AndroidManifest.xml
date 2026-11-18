@@ -32,6 +32,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Read aloud keeps reading with the screen off. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Wake word: listens for a short time after the screen turns on. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <application
         android:allowBackup="true"
@@ -68,6 +70,10 @@
                 <action android:name="com.norrawitro.gpstracker.PLACE_EVENT" />
             </intent-filter>
         </receiver>
+        <service
+            android:name=".WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <service
             android:name=".ReadAloudService"
             android:exported="false"
