@@ -68,6 +68,12 @@ p{margin:0}
 .live-switch[data-state="listening"]{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 18px var(--accent-soft)}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="listening"]{animation:none}}
+/* Microphone light: while sound comes in, the ring glows brighter with loudness and changes colour with pitch
+   (low voice blue, middle green, high orange). */
+.live-switch.hearing{animation:none;transition:box-shadow .08s linear,border-color .08s linear;
+  border-color:hsl(var(--mic-hue,190) 90% 60%);
+  box-shadow:0 0 0 calc(6px + var(--mic-lv,0) * 16px) hsl(var(--mic-hue,190) 90% 60% / calc(.18 + var(--mic-lv,0) * .5)),
+             0 0 calc(10px + var(--mic-lv,0) * 40px) hsl(var(--mic-hue,190) 95% 60% / calc(var(--mic-lv,0) * .9))}
 .live-status{min-height:1.6em;text-align:center}
 .steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 .steps li.done{color:var(--ok)}

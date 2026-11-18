@@ -674,3 +674,20 @@ Owner phone notes from the same session:
   - both answered from memory afterwards.
   - No errors and no sideways scrolling. The earlier tests still pass.
 - Not tested on the phone, including the file in Documents.
+
+## 2026-11-18 (later): microphone light in Live
+
+- While Live listens, the LIVE button's ring glows brighter the louder the sound, and changes colour:
+  from blue-green (soft or low voice) to orange (loud or high voice). It goes out after 0.7 s without sound.
+- Loudness comes from the phone's speech recognizer (`onRmsChanged`). Pitch only when the recognizer also hands over
+  the raw sound (`onBufferReceived`, zero-crossing estimate); most phones do not, and then the colour follows loudness.
+- Not tested on a real phone yet.
+
+## 2026-11-18 (later): wake word without the repeated "ting"
+
+- The owner heard a listening tone again and again, and saw the microphone icon. Cause: wake-word mode listens for
+  30 s after each screen-on and restarts the phone's recognizer every few seconds; many recognizers play a tone on
+  each start. Now the music, notification and system streams are muted for 0.9 s around each start (streams already
+  muted are left alone) and always unmuted when the window closes.
+- The microphone icon in the status bar is Android's own privacy sign while any app listens; it cannot be hidden.
+  Turning wake-word mode off (Live page) stops both.

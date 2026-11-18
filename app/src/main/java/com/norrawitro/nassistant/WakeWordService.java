@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -119,6 +120,7 @@ public class WakeWordService extends Service implements RecognitionListener {
     private void openWindow() {
         windowEnd = System.currentTimeMillis() + WINDOW_MS;
         main.removeCallbacksAndMessages(null);
+        unhushBeep();
         main.postDelayed(this::listen, 300);
         main.postDelayed(this::closeWindow, WINDOW_MS + 500);
     }
@@ -126,6 +128,7 @@ public class WakeWordService extends Service implements RecognitionListener {
     private void closeWindow() {
         windowEnd = 0;
         main.removeCallbacksAndMessages(null);
+        unhushBeep();
         listening = false;
         if (rec != null) { try { rec.cancel(); rec.destroy(); } catch (Exception ignored) {} rec = null; }
     }
@@ -143,7 +146,43 @@ public class WakeWordService extends Service implements RecognitionListener {
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "th-TH")
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+        hushBeep();
         try { rec.startListening(i); listening = true; } catch (Exception e) { main.postDelayed(this::listen, 1000); }
+    }
+
+    // ---------- no "ting" each time listening starts ----------
+    private static final int[] BEEP_STREAMS = {AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM};
+    private final boolean[] hushed = new boolean[BEEP_STREAMS.length];
+    private final Runnable unhush = this::unhushBeep;
+
+    /**
+     * Many phones' speech recognizers play a short tone every time they start listening. The wake word restarts
+     * listening every few seconds while the screen is on, so that tone kept sounding. Mute the tone's streams for
+     * a moment around each start; streams the owner had muted already are left alone.
+     */
+    private void hushBeep() {
+        AudioManager am = getSystemService(AudioManager.class);
+        if (am == null) return;
+        main.removeCallbacks(unhush);
+        for (int k = 0; k < BEEP_STREAMS.length; k++) {
+            if (hushed[k]) continue;
+            try {
+                if (!am.isStreamMute(BEEP_STREAMS[k])) {
+                    am.adjustStreamVolume(BEEP_STREAMS[k], AudioManager.ADJUST_MUTE, 0);
+                    hushed[k] = true;
+                }
+            } catch (Exception ignored) {} // Do Not Disturb can refuse; then the tone may still sound
+        }
+        main.postDelayed(unhush, 900);
+    }
+
+    private void unhushBeep() {
+        AudioManager am = getSystemService(AudioManager.class);
+        for (int k = 0; k < BEEP_STREAMS.length; k++) {
+            if (!hushed[k]) continue;
+            hushed[k] = false;
+            try { if (am != null) am.adjustStreamVolume(BEEP_STREAMS[k], AudioManager.ADJUST_UNMUTE, 0); } catch (Exception ignored) {}
+        }
     }
 
     /** Text after the wake word, "" when only the wake word was said, or null when it was not said. */
