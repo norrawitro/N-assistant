@@ -609,3 +609,26 @@ Owner phone notes from the same session:
 - the same question then comes from memory;
 - a cancelled question's answer after a reopen is ignored.
 - The earlier memory and Live-off tests still pass.
+
+## 2026-11-18 (later): going back to an older version
+
+**Why:** the owner now lets every finished change be released at once, because "we can go back to an older version". GPS-Tracker had that button, N-assistant did not, so I added it, with the owner's go-ahead for improvements I see fit.
+
+### What was built (Settings → "ย้อนกลับไปเวอร์ชันเก่า")
+- **"ดูเวอร์ชันเก่า"** lists up to 15 older releases that have an APK (`Updater.olderReleases`, from the GitHub releases API). Each one says whether that version can restore a backup: v1.0.28 and later have a working "นำเข้าไฟล์ JSON".
+- **Choosing a version** asks first, saying what is lost. Then:
+  1. The app writes the full JSON backup (settings, reminders, place reminders, knowledge base, answer memory, all days) to `Documents/N-assistant/backup/` through MediaStore, so it survives the uninstall. API keys and tokens are not included. If the backup fails, nothing else happens.
+  2. Live, read aloud and the wake word are stopped. The APK is downloaded into Download with Android's download manager, with progress shown.
+  3. The steps are shown, with a "ถอนแอปนี้" button that opens Android's uninstall prompt (`REQUEST_DELETE_PACKAGES`). Then the owner installs the file from Download, and restores with ประวัติ → นำเข้าไฟล์ JSON.
+- **If anything fails before the uninstall,** the app says so, and the data in the app is untouched.
+
+### Checks
+- Browser test with a mock bridge:
+  - the list with restore notes;
+  - the confirm;
+  - the backup content, which has every section and no API key;
+  - the download progress, then the ready steps with the backup path and file;
+  - the uninstall call.
+  - No errors and no sideways scrolling. The read-aloud and wake-word tests still pass.
+- Java compiles in CI.
+- Not tested on the phone.

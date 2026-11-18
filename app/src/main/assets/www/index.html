@@ -629,6 +629,23 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <div class="row"><button class="btn" id="checkUpd" type="button">ตรวจหาอัปเดต</button></div>
       <p class="small muted">แอปตรวจหาเวอร์ชันใหม่จาก GitHub ให้อัตโนมัติวันละครั้ง ข้อมูลที่บันทึกไว้จะยังอยู่หลังอัปเดต</p>
     </div>
+    <div class="card">
+      <h3>ย้อนกลับไปเวอร์ชันเก่า</h3>
+      <p class="small muted">Android ไม่ยอมติดตั้งเวอร์ชันเก่าทับเวอร์ชันใหม่ ต้องถอนแอปก่อน ซึ่งจะลบข้อมูลในแอป แอปจึงสำรองข้อมูลทั้งหมดไว้ที่ <span class="mono">Documents/N-assistant/backup/</span> ก่อนเสมอ (API key และ token ไม่ถูกสำรอง ต้องใส่ใหม่) กู้คืนได้ที่ ประวัติ → นำเข้าไฟล์ JSON (เวอร์ชัน 1.0.28 ขึ้นไป)</p>
+      <div class="row"><button class="btn" id="dgList" type="button">ดูเวอร์ชันเก่า</button></div>
+      <div class="hist" id="dgVersions"></div>
+      <div id="dgSteps" hidden>
+        <p class="small" id="dgMsg">-</p>
+        <ol class="small" id="dgHow" hidden>
+          <li>สำรองข้อมูลไว้ที่ <span class="mono" id="dgBackup"></span></li>
+          <li>ดาวน์โหลดเวอร์ชันเก่าไว้ที่ <span class="mono" id="dgFile"></span></li>
+          <li>กด "ถอนแอปนี้" ด้านล่าง</li>
+          <li>เปิดแอปจัดการไฟล์ ไปที่โฟลเดอร์ Download แล้วแตะไฟล์ด้านบนเพื่อติดตั้ง</li>
+          <li>เปิดแอปแล้วไปที่ ประวัติ → นำเข้าไฟล์ JSON เลือกไฟล์สำรองด้านบน</li>
+        </ol>
+        <div class="row"><button class="btn primary" id="dgUninstall" type="button" hidden>ถอนแอปนี้</button></div>
+      </div>
+    </div>
   </section>
 </div>
 

@@ -555,6 +555,46 @@
     else liveReply("ครับ ว่ามาเลย", "bot");
   };
 
+  // ---------- going back to an older version: back up, download, uninstall, install ----------
+  let olders = [], dgBackupPath = "";
+  $("dgList").addEventListener("click", () => {
+    if (!A || !A.listOlderVersions) { $("dgVersions").textContent = "ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
+    $("dgVersions").textContent = "กำลังดูรายการเวอร์ชัน…"; A.listOlderVersions();
+  });
+  handlers.olderVersions = list => {
+    const box = $("dgVersions"); box.textContent = "";
+    if (!list || list.error || !Array.isArray(list)) { box.textContent = "ดูรายการไม่สำเร็จ: " + ((list && list.error) || ""); return; }
+    olders = list.slice(0, 15);
+    if (!olders.length) { box.textContent = "ไม่มีเวอร์ชันเก่าให้ย้อนกลับ"; return; }
+    olders.forEach((v, i) => {
+      const d = document.createElement("div"); d.className = "day";
+      const restore = v.versionCode >= 28 ? "กู้ข้อมูลได้" : "เวอร์ชันนี้ยังไม่มีปุ่มกู้ข้อมูล";
+      d.innerHTML = `<span class="d">${esc(v.version)}</span><div class="s">${esc(new Date(v.date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }))}<div class="small muted">${esc(restore)}</div></div>`;
+      const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = "ย้อนไปเวอร์ชันนี้"; b.dataset.dg = i;
+      d.appendChild(b); box.appendChild(d);
+    });
+  };
+  $("dgVersions").addEventListener("click", e => {
+    const b = e.target.closest("button[data-dg]"); if (!b) return;
+    const v = olders[+b.dataset.dg]; if (!v) return;
+    if (!confirm(`ย้อนไปเวอร์ชัน ${v.version}?\n\nแอปจะสำรองข้อมูล แล้วดาวน์โหลดเวอร์ชันนี้ไว้ในโฟลเดอร์ Download จากนั้นต้องถอนแอปนี้และติดตั้งไฟล์ที่ดาวน์โหลดเอง\n\nหลังถอนแอป ข้อมูลในแอปจะหายจากเครื่อง (มีไฟล์สำรองไว้ให้) API key และ token ต้องใส่ใหม่`)) return;
+    $("dgSteps").hidden = false; $("dgHow").hidden = true; $("dgUninstall").hidden = true;
+    $("dgMsg").textContent = "กำลังสำรองข้อมูล…";
+    dgBackupPath = A && A.saveBackupFile ? A.saveBackupFile(buildExport("json")) : "";
+    if (!dgBackupPath) { $("dgMsg").textContent = "สำรองข้อมูลไม่สำเร็จ จึงยังไม่ย้อนเวอร์ชัน ลองส่งออก JSON เองที่หน้าประวัติก่อน"; return; }
+    $("dgMsg").textContent = "สำรองแล้ว กำลังดาวน์โหลด…";
+    A.prepareDowngrade(v.url, v.name || `n-assistant-${v.version}.apk`);
+  });
+  handlers.downgrade = d => {
+    if (!d) return;
+    if (d.step === "error") { $("dgMsg").textContent = "ไม่สำเร็จ: " + (d.message || "") + " ข้อมูลในแอปยังอยู่ครบ"; return; }
+    if (d.step !== "ready") { $("dgMsg").textContent = d.message || ""; return; }
+    $("dgMsg").textContent = "พร้อมแล้ว ทำตามขั้นตอนนี้";
+    $("dgBackup").textContent = dgBackupPath; $("dgFile").textContent = d.file || "";
+    $("dgHow").hidden = false; $("dgUninstall").hidden = false;
+  };
+  $("dgUninstall").addEventListener("click", () => { if (A && A.uninstallSelf) A.uninstallSelf(); });
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer

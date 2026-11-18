@@ -543,6 +543,88 @@ public class MainActivity extends Activity {
                     + ",\"word\":" + JSONObject.quote(WakeWordService.word(MainActivity.this)) + "}";
         }
 
+        // ---------- going back to an older version (Android needs an uninstall for that) ----------
+
+        /** Older releases, as the "olderVersions" event: [{version, versionCode, url, name, date}] or {error}. */
+        @JavascriptInterface
+        public void listOlderVersions() {
+            io.execute(() -> {
+                try { emit("olderVersions", Updater.olderReleases().toString()); }
+                catch (Exception e) { emit("olderVersions", "{\"error\":" + JSONObject.quote(String.valueOf(e.getMessage())) + "}"); }
+            });
+        }
+
+        /** Writes the page's JSON backup to Documents/N-assistant/backup/ (kept after an uninstall). Returns its path or "". */
+        @JavascriptInterface
+        public String saveBackupFile(String json) {
+            try {
+                String folder = android.os.Environment.DIRECTORY_DOCUMENTS + "/N-assistant/backup/";
+                String name = "n-assistant-backup-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date()) + ".json";
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json");
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder);
+                Uri uri = getContentResolver().insert(android.provider.MediaStore.Files.getContentUri("external"), v);
+                if (uri == null) return "";
+                try (OutputStream os = getContentResolver().openOutputStream(uri, "w")) {
+                    if (os == null) return "";
+                    os.write(json.getBytes(StandardCharsets.UTF_8));
+                }
+                return folder + name;
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** Stops background work and downloads the chosen APK into Download (it must survive the uninstall). */
+        @JavascriptInterface
+        public void prepareDowngrade(String url, String name) {
+            main.post(() -> {
+                if (live != null && live.isOn()) live.stop();
+                ReadAloudService.stop(MainActivity.this);
+                WakeWordService.stop(MainActivity.this);
+            });
+            io.execute(() -> {
+                try {
+                    android.app.DownloadManager dm = getSystemService(android.app.DownloadManager.class);
+                    android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(Uri.parse(url))
+                            .setTitle(name).setMimeType("application/vnd.android.package-archive")
+                            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
+                    long id = dm.enqueue(req);
+                    for (int t = 0; t < 600; t++) { // up to 10 minutes
+                        try (android.database.Cursor q = dm.query(new android.app.DownloadManager.Query().setFilterById(id))) {
+                            if (q != null && q.moveToFirst()) {
+                                int st = q.getInt(q.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS));
+                                long done = q.getLong(q.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                                long total = q.getLong(q.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+                                if (st == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                                    emit("downgrade", "{\"step\":\"ready\",\"ok\":true,\"file\":" + JSONObject.quote("Download/" + name) + "}");
+                                    return;
+                                }
+                                if (st == android.app.DownloadManager.STATUS_FAILED) throw new Exception("ดาวน์โหลดไม่สำเร็จ");
+                                int pct = total > 0 ? (int) (done * 100 / total) : 0;
+                                emit("downgrade", "{\"step\":\"download\",\"ok\":true,\"message\":\"กำลังดาวน์โหลด " + pct + "%\"}");
+                            }
+                        }
+                        Thread.sleep(1000);
+                    }
+                    throw new Exception("ดาวน์โหลดนานเกินไป");
+                } catch (Exception e) {
+                    emit("downgrade", "{\"step\":\"error\",\"ok\":false,\"message\":" + JSONObject.quote(String.valueOf(e.getMessage())) + "}");
+                }
+            });
+        }
+
+        /** Android's own uninstall prompt for this app. */
+        @JavascriptInterface
+        public void uninstallSelf() {
+            main.post(() -> {
+                try { startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception ignored) {}
+            });
+        }
+
         // ---------- GPS-Tracker link ----------
 
         @JavascriptInterface
