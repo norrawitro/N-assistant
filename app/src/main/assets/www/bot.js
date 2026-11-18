@@ -14,6 +14,7 @@
  *   { type: "askAgain" }          ask the AI again, skipping the answer memory
  *   { type: "placeReminder", when: "enter"|"leave", place, text }   remind on arriving at / leaving a place
  *   { type: "whereNow" }          where the phone is (from GPS-Tracker)
+ *   { type: "readClipboard" }     read aloud the text copied to the clipboard
  *   { type: "dayTasks", text }    add to today's tasks   { type: "planToday" }    ask the AI for today's plan
  * ctx: { now: Date, pending: object|null, aiBusy: boolean }
  */
@@ -224,6 +225,9 @@
       const text = cleanNote(raw);
       return text ? { type: "note", text } : { type: "ask", say: "ยังไม่ได้ยิน จะให้จดว่าอะไรครับ", pending };
     }
+
+    // ----- read aloud what was copied: "อ่านคลิปบอร์ด", "อ่านข้อความที่ก๊อปไว้ให้ฟัง" -----
+    if (t.length <= 40 && /อ่าน/.test(t) && /คลิปบอร์ด|คลิปบอด|ก๊อป|ก็อป|ก้อป|copy|คัดลอก|ที่ลอกไว้/.test(t)) return { type: "readClipboard" };
 
     // ----- answer memory: "ถาม AI ใหม่" skips a remembered answer -----
     if (short && /^(ถาม)?(เอไอ|ai|เอ ไอ)?\s*(ใหม่|อีกที|อีกครั้ง)|^ถาม\s*(เอไอ|ai|เอ ไอ)\s*(ใหม่|อีกที|อีกครั้ง)|^ไม่ใช่.{0,6}ถามใหม่/.test(t) && /ถาม|เอไอ|ai/.test(t)) return { type: "askAgain" };

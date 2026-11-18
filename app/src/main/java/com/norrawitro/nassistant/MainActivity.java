@@ -35,6 +35,8 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final int REQ_SAVE = 7001;
     private static final int REQ_FILE = 7005;
+    private static final int REQ_WAKE_MIC = 7006;
+    private String pendingWakeWord;
     /** The page's file input waiting for the system file picker. */
     private ValueCallback<Uri[]> fileCallback;
     private static final int REQ_NOTIF = 7002;
@@ -50,6 +52,7 @@ public class MainActivity extends Activity {
     private File downloadedApk;
     private boolean pageReady;
     private String pendingTab;
+    private String pendingWake;
     private LiveVoice live;
     private boolean liveEcho = true;
     /** The activity while it is on screen, so background AI results can go straight to the page. */
@@ -62,6 +65,7 @@ public class MainActivity extends Activity {
         AlarmReceiver.ensureChannel(this);
         pendingRing = getIntent().getStringExtra("ring");
         pendingTab = getIntent().getStringExtra("tab");
+        pendingWake = getIntent().getStringExtra("wake");
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -153,6 +157,8 @@ public class MainActivity extends Activity {
         if (r != null) pendingRing = r;
         String t = intent.getStringExtra("tab");
         if (t != null) pendingTab = t;
+        String w = intent.getStringExtra("wake");
+        if (w != null) pendingWake = w;
         deliverRing();
     }
 
@@ -176,6 +182,24 @@ public class MainActivity extends Activity {
             emit("tab", JSONObject.quote(pendingTab));
             pendingTab = null;
         }
+        if (pendingWake != null) {
+            emit("wake", JSONObject.quote(pendingWake));
+            pendingWake = null;
+        }
+    }
+
+    /** True while the app is on screen with Live listening, so the wake-word listener leaves the microphone alone. */
+    static boolean liveActive() {
+        MainActivity a = visible;
+        return a != null && a.live != null && a.live.isOn();
+    }
+
+    /** The wake word was heard: hand the rest of the sentence to the page if it is on screen. */
+    static boolean deliverWake(String rest) {
+        MainActivity a = visible;
+        if (a == null || !a.pageReady) return false;
+        a.emit("wake", JSONObject.quote(rest == null ? "" : rest));
+        return true;
     }
 
     /** Hands a finished AI job to the page if the app is on screen. Returns false when nobody is looking. */
@@ -222,6 +246,12 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_WAKE_MIC) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) WakeWordService.start(this, pendingWakeWord);
+            emit("wakeState", "{\"on\":" + WakeWordService.enabled(this) + ",\"running\":" + WakeWordService.running
+                    + ",\"word\":" + JSONObject.quote(WakeWordService.word(this)) + "}");
+            return;
+        }
         if (requestCode == REQ_TERMUX) {
             emit("termuxPerm", String.valueOf(TermuxOllama.permitted(this)));
             return;
@@ -296,6 +326,11 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         visible = this;
+        // Wake word was on but its service is gone (force close or update): start it again while on screen.
+        if (WakeWordService.enabled(this) && !WakeWordService.running
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            try { WakeWordService.start(this, WakeWordService.word(this)); } catch (Exception ignored) {}
+        }
         // Coming back from the "install unknown apps" setting: continue the install if allowed now.
         if (downloadedApk != null && Updater.ensureInstallAllowedSilently(this)) {
             File apk = downloadedApk;
@@ -426,6 +461,7 @@ public class MainActivity extends Activity {
         public void liveStart() {
             main.post(() -> {
                 ReadAloudService.stop(MainActivity.this); // one voice at a time
+                WakeWordService.pause(MainActivity.this); // Live takes the microphone
                 if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
                 } else {
@@ -479,6 +515,32 @@ public class MainActivity extends Activity {
                 Intent i = getPackageManager().getLaunchIntentForPackage(TermuxOllama.PKG);
                 if (i != null) startActivity(i);
             });
+        }
+
+        // ---------- wake word ----------
+
+        @JavascriptInterface
+        public void wakeStart(String word) {
+            main.post(() -> {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    pendingWakeWord = word;
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_WAKE_MIC);
+                    return;
+                }
+                WakeWordService.start(MainActivity.this, word);
+                emit("wakeState", wakeStatus());
+            });
+        }
+
+        @JavascriptInterface
+        public void wakeStop() {
+            main.post(() -> { WakeWordService.stop(MainActivity.this); emit("wakeState", wakeStatus()); });
+        }
+
+        @JavascriptInterface
+        public String wakeStatus() {
+            return "{\"on\":" + WakeWordService.enabled(MainActivity.this) + ",\"running\":" + WakeWordService.running
+                    + ",\"word\":" + JSONObject.quote(WakeWordService.word(MainActivity.this)) + "}";
         }
 
         // ---------- GPS-Tracker link ----------
