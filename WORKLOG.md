@@ -674,3 +674,8 @@ Owner phone notes from the same session:
   - both answered from memory afterwards.
   - No errors and no sideways scrolling. The earlier tests still pass.
 - Not tested on the phone, including the file in Documents.
+
+## Waiting to be done (with the next change)
+
+- Microphone light: an icon or button light that glows and changes colour with the loudness and pitch of the sound,
+  so the owner can see the app is hearing. Asked 2026-11-18; the owner said to do it together with the next change, not now.
