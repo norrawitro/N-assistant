@@ -823,6 +823,8 @@
     try { localStorage.setItem(ASKED_KEY, JSON.stringify(m)); } catch {}
   }
   const abandonedLive = { has: id => !!(askedAll()[id] || {}).abandoned, add: id => askedPut(id, { abandoned: true, at: Date.now() }) };
+  /** Questions the page stopped waiting for after 5 minutes: their answer is still logged (and remembered) when it comes. */
+  const lateLive = { has: id => !!(askedAll()[id] || {}).late, add: (id, q) => askedPut(id, { q, late: true, at: Date.now() }) };
   const listeningWhileThinking = () => `กำลังฟัง… พูดได้เลย (เอไอกำลังคิด ${liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0} วินาที)`;
   function stopThinking() {
     if (!liveJob) return;
@@ -891,10 +893,11 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     }, 1000);
     liveJob.timer = setTimeout(() => {
       if (!liveJob || liveJob.id !== job.id) return;
-      abandonedLive.add(job.id);
+      // Stop holding Live for it, but keep waiting in the background: the answer goes into the log when it comes.
+      lateLive.add(job.id, text);
       stopThinking(); clearPending("live", "live");
       liveQueue = [];
-      liveReply(`AI ไม่ตอบภายใน 5 นาที${settings().provider === "local" ? " ตรวจว่าเปิด Ollama ใน Termux อยู่" : ""} ลองพูดใหม่อีกครั้ง`, "note");
+      liveReply(`AI ยังไม่ตอบใน 5 นาที${settings().provider === "local" ? " (โมเดลในมือถืออาจช้า)" : ""} ถามเรื่องอื่นต่อได้เลย ถ้าคำตอบมาทีหลังจะขึ้นในบันทึกการสนทนา`, "note");
     }, settings().provider === "githubmd" ? LIVE_TIMEOUT_MS + 90 * 1000 : LIVE_TIMEOUT_MS); // the file channel waits 5 min itself
     renderConvo();
     startJob(job);
@@ -910,10 +913,13 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     if (abandonedLive.has(res.id)) { askedPut(res.id, null); return; } // cancelled, or already reported as "no answer in 5 minutes"
     const askedQ = liveJob && res.id === liveJob.id ? liveJob.q : ((askedAll()[res.id] || {}).q || "");
     askedPut(res.id, null);
+    const late = lateLive.has(res.id) || !(liveJob && res.id === liveJob.id);
     if (liveJob && res.id === liveJob.id) stopThinking();
-    // Otherwise it belongs to an earlier question (for example from before the app was reopened): still log it.
+    // Otherwise it belongs to an earlier question (for example from before the app was reopened, or one that took
+    // over 5 minutes): still log it, saying which question it answers.
+    if (late && askedQ) addConvo("note", `คำตอบที่มาช้าของ "${askedQ.length > 60 ? askedQ.slice(0, 60) + "…" : askedQ}"`);
     if (!res.ok) {
-      liveQueue = [];
+      if (!late) liveQueue = [];
       liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
       return;
     }
@@ -1159,6 +1165,8 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
       renderChatButton();
     } else if (res.kind === "live") {
       applyLiveResult(res);
+    } else if (res.kind === "test") {
+      aiTestDone(res);
     } else if (res.kind === "reflection") {
       const out = $("reflection");
       if (!res.ok) { if (isToday) { out.hidden = false; out.innerHTML = `<p class="small">${esc(res.error)}</p>`; } renderReflectButton(); return; }
@@ -1606,6 +1614,30 @@ ${contextText(date)}
         return data;
       });
   }
+  // ---------- "ทดสอบ AI": a real question through the same path Live uses ----------
+  let aiTestAt = 0, aiTestTick = null;
+  $("aiTest").addEventListener("click", () => {
+    $("sSaveBtn").click(); // test what is on screen, not what was saved before
+    const out = $("aiTestStatus");
+    let job;
+    try { job = buildJob("test", "test", "ตอบสั้นๆ ภาษาไทยหนึ่งประโยคว่า สวัสดีครับ ผมพร้อมช่วยแล้ว", { effort: "low", userText: "สวัสดี (ทดสอบ)" }); }
+    catch (e) { out.textContent = "ยังทดสอบไม่ได้: " + e.message; return; }
+    aiTestAt = Date.now();
+    $("aiTest").disabled = true;
+    clearInterval(aiTestTick);
+    const name = { local: "Ollama ในเครื่อง", claude: "Claude API", openai: "ผู้ให้บริการที่ตั้งไว้", githubmd: "ไฟล์ MD บน GitHub" }[settings().provider] || "AI";
+    aiTestTick = setInterval(() => { out.textContent = `ส่งไปที่ ${name} แล้ว รอคำตอบ ${Math.floor((Date.now() - aiTestAt) / 1000)} วินาที…`; }, 1000);
+    out.textContent = `ส่งไปที่ ${name} แล้ว รอคำตอบ…`;
+    startJob(job);
+  });
+  function aiTestDone(res) {
+    clearInterval(aiTestTick); $("aiTest").disabled = false;
+    const sec = aiTestAt ? Math.round((Date.now() - aiTestAt) / 1000) : 0;
+    const out = $("aiTestStatus");
+    if (!res.ok) { out.textContent = `ไม่สำเร็จ (${sec} วินาที): ${res.error || "ไม่ทราบสาเหตุ"}`; return; }
+    out.textContent = `ใช้ได้ ตอบใน ${sec} วินาที: "${cleanText(res.text).slice(0, 120)}"` + (sec > 120 ? " · ช้ามาก ลองโมเดลที่เล็กลง" : "");
+  }
+
   $("testLocal").addEventListener("click", async () => {
     const btn = $("testLocal"); btn.disabled = true; $("localStatus").textContent = "กำลังติดต่อ Ollama…";
     const keep = $("sLocalModel").value;

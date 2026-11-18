@@ -691,3 +691,15 @@ Owner phone notes from the same session:
   muted are left alone) and always unmuted when the window closes.
 - The microphone icon in the status bar is Android's own privacy sign while any app listens; it cannot be hidden.
   Turning wake-word mode off (Live page) stops both.
+
+## 2026-11-18 (later): AI answers that never arrived
+
+- The owner reported never getting an answer from the AI. Found in the code:
+  - After 5 minutes the page gave up on a Live question and **threw away** the answer when it came later, while the
+    background request waits up to 10 minutes (a 4B model on a phone can take that long). Now the page stops
+    holding Live after 5 minutes but keeps the question; a late answer goes into the conversation log, under
+    "คำตอบที่มาช้าของ …", and into answer memory. Only "ยกเลิก" still discards an answer.
+  - AiService used notification ids 4300/4301, the same as the wake-word service; finishing an AI job removed the
+    wake-word notification. Now 4100/4101.
+- New in Settings: "ทดสอบ AI" saves the settings and sends a short real question through the same path as Live,
+  then shows the reply and the seconds it took, or the exact error.
