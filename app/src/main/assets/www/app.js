@@ -64,7 +64,8 @@
     document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
     if (name === "live") renderConvo();
     $("readBar").hidden = name !== "read";
-    if (name === "read") syncRead();
+    document.body.classList.toggle("reading", name === "read");
+    if (name === "read") { setReadMode(readSentences.length > 0); requestAnimationFrame(sizeReadBox); syncRead(); }
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     TABS.forEach(t => $("p-" + t).hidden = t !== name);
     if (name === "evening") renderChecks();
@@ -248,22 +249,44 @@
         }
         if (part) out.push(part);
       }
+      if (out.length && !out[out.length - 1].endsWith("\n")) out[out.length - 1] += "\n"; // paragraph end, shown as a line break
     }
     return out;
+  }
+  /** The box fills the screen below the controls; the line being read stays at one height (ANCHOR) in it. */
+  const ANCHOR = 0.3;
+  function sizeReadBox() {
+    if ($("p-read").hidden) return;
+    const box = $("readBox"), top = box.getBoundingClientRect().top;
+    box.style.height = Math.max(150, Math.floor(window.innerHeight - Math.max(top, 0) - 12)) + "px";
+    // Space above the first and below the last sentence, so every sentence can sit at the anchor line.
+    const r = $("reader"), h = box.clientHeight;
+    r.style.paddingTop = Math.round(h * ANCHOR) + "px";
+    r.style.paddingBottom = Math.round(h * (1 - ANCHOR)) + "px";
+  }
+  window.addEventListener("resize", sizeReadBox);
+  /** Shows the text field (editing) or the sentences (reading) in the one box. */
+  function setReadMode(reading) {
+    $("readText").hidden = reading; $("reader").hidden = !reading;
+    $("readEdit").disabled = !reading;
+    sizeReadBox();
   }
   function renderReader() {
     const box = $("reader"); box.textContent = "";
     readSentences.forEach((s, i) => {
-      const sp = document.createElement("span"); sp.textContent = s; sp.dataset.i = i;
+      const sp = document.createElement("span"); sp.textContent = s + " "; sp.dataset.i = i;
       if (i === readAt) sp.className = "now"; else if (readAt >= 0 && i < readAt) sp.className = "done";
       box.appendChild(sp);
+      if (/\n\s*$/.test(s)) box.appendChild(document.createElement("br"));
     });
   }
   function markSentence(i) {
     readAt = i;
-    $("reader").querySelectorAll("span").forEach((sp, k) => { sp.className = k === i ? "now" : (i >= 0 && k < i) ? "done" : ""; });
-    const now = $("reader").querySelector("span.now");
-    if (now) now.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const r = $("reader");
+    r.querySelectorAll("span").forEach((sp, k) => { sp.className = k === i ? "now" : (i >= 0 && k < i) ? "done" : ""; });
+    const now = r.querySelector("span.now");
+    // Keep the highlighted sentence at the same place on screen and move the text up instead.
+    if (now) r.scrollTo({ top: Math.max(0, now.offsetTop - Math.round(r.clientHeight * ANCHOR)), behavior: "smooth" });
   }
   function setReadUi(playing, msg) {
     readPlaying = playing;
@@ -274,7 +297,7 @@
   function startReading(from = 0) {
     const text = $("readText").value.trim();
     if (!text) { setReadUi(false, "ยังไม่มีข้อความ วางข้อความก่อน"); return; }
-    readSentences = splitSentences(text); renderReader();
+    readSentences = splitSentences(text); setReadMode(true); renderReader();
     from = Math.max(0, Math.min(from, readSentences.length - 1));
     saveRead();
     if (!A || !A.readStart) { setReadUi(false, "อ่านออกเสียงใช้ได้ในแอปบนมือถือเท่านั้น"); markSentence(from); return; }
@@ -301,7 +324,12 @@
   $("readClear").addEventListener("click", () => {
     if (readPlaying) stopReading();
     $("readText").value = ""; readSentences = []; readAt = -1; renderReader(); saveRead();
-    setReadUi(false, "ล้างแล้ว");
+    setReadMode(false); setReadUi(false, "ล้างแล้ว วางหรือพิมพ์ข้อความใหม่");
+  });
+  $("readEdit").addEventListener("click", () => {
+    if (readPlaying) stopReading();
+    setReadMode(false); $("readText").focus();
+    setReadUi(false, "แก้ไขข้อความ แล้วกดเล่น");
   });
   $("reader").addEventListener("click", e => { const sp = e.target.closest("span[data-i]"); if (sp) startReading(+sp.dataset.i); });
   $("readText").addEventListener("input", () => { if (!readPlaying) { readSentences = []; readAt = -1; renderReader(); } saveRead(); });
@@ -316,7 +344,7 @@
   function syncRead() {
     let s = null; try { s = A && A.readStatus ? JSON.parse(A.readStatus()) : null; } catch {}
     if (!s) return;
-    if (s.playing) { if (!readSentences.length) { readSentences = splitSentences($("readText").value); renderReader(); } markSentence(s.index); setReadUi(true); }
+    if (s.playing) { if (!readSentences.length) { readSentences = splitSentences($("readText").value); renderReader(); } setReadMode(true); markSentence(s.index); setReadUi(true); }
     else if (readPlaying) setReadUi(false, "อ่านจบแล้ว");
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncRead(); });

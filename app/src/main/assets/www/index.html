@@ -82,20 +82,22 @@ p{margin:0}
 .live-switch[data-state="thinking"]{animation:think 1.2s ease-in-out infinite}
 @keyframes think{50%{opacity:.75}}
 @media (prefers-reduced-motion: reduce){.live-switch[data-state="thinking"]{animation:none}}
-/* Read aloud: the control bar stays at the bottom of the screen, all buttons visible and wrapping on narrow phones */
-.reader{display:flex;flex-wrap:wrap;gap:2px 4px;max-height:45vh;overflow-y:auto;line-height:1.8;font-size:1.05rem}
-.reader:empty{display:none}
-.reader span{padding:1px 4px;border-radius:6px;cursor:pointer}
+/* Read aloud: controls at the top of the page; one text box fills the rest of the screen */
+body.reading .clock{display:none}
+#p-read{gap:10px}
+.readbar{position:sticky;top:0;z-index:15;background:var(--bg);padding:6px 0 4px;display:flex;flex-direction:column;gap:8px}
+.readbar[hidden]{display:none!important}
+.rb-row{display:flex;flex-wrap:wrap;gap:8px;width:100%}
+.rb-row .btn{flex:1 1 0;min-width:64px;padding:10px 4px;line-height:1.25}
+.speeds button{flex:1 1 0;min-width:52px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 1rem var(--f-display);padding:10px 4px;border-radius:10px;cursor:pointer}
+.speeds button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+#readStatus{margin:0;min-height:1.4em}
+.readbox{position:relative;height:60vh;min-height:150px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.readbox textarea{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:var(--r);resize:none;padding:14px;font-size:1.05rem;line-height:1.8;background:transparent;color:var(--ink)}
+.reader{position:absolute;inset:0;overflow-y:auto;padding:0 14px;line-height:1.9;font-size:1.08rem;overflow-wrap:anywhere;scroll-behavior:smooth}
+.reader span{padding:2px 3px;border-radius:6px;cursor:pointer;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .reader span.done{color:var(--muted)}
 .reader span.now{background:var(--accent);color:var(--accent-ink)}
-#p-read{padding-bottom:132px}
-.readbar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--surface);border-top:1px solid var(--line);
-  padding:10px max(12px,env(safe-area-inset-left,0px)) calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;align-items:center}
-.readbar[hidden]{display:none!important}
-.rb-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;max-width:640px}
-.rb-row .btn{flex:1 1 0;min-width:84px;padding:12px 8px}
-.speeds button{flex:1 1 0;min-width:56px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:700 1rem var(--f-display);padding:10px 4px;border-radius:10px;cursor:pointer}
-.speeds button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .kblist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .kblist li{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .kblist li .kt{flex:1;min-width:0;overflow-wrap:anywhere}
@@ -265,16 +267,11 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
 
   <!-- READ ALOUD -->
   <section class="panel" id="p-read" role="tabpanel" hidden>
-    <div class="card">
-      <label for="readText" class="small muted">วางข้อความที่จะให้อ่าน (อ่านด้วยเสียงภาษาไทยของเครื่อง ไม่ใช้อินเทอร์เน็ต ปิดจอแล้วยังอ่านต่อ)</label>
-      <textarea id="readText" rows="5" placeholder="วางหรือพิมพ์ข้อความที่นี่"></textarea>
-      <div class="reader" id="reader" aria-live="off"></div>
-      <p class="small muted" id="readStatus">แตะประโยคไหนเพื่อเริ่มอ่านจากตรงนั้นได้</p>
-    </div>
     <div class="readbar" id="readBar">
       <div class="rb-row">
         <button class="btn primary" id="readPaste" type="button">วางและเล่น</button>
         <button class="btn" id="readPlay" type="button">เล่น</button>
+        <button class="btn" id="readEdit" type="button">แก้ไข</button>
         <button class="btn" id="readClear" type="button">ล้าง</button>
       </div>
       <div class="rb-row speeds" role="group" aria-label="ความเร็ว">
@@ -283,6 +280,12 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <button type="button" data-rate="2" aria-pressed="true">x2</button>
         <button type="button" data-rate="3" aria-pressed="false">x3</button>
       </div>
+      <p class="small muted" id="readStatus">วางหรือพิมพ์ข้อความ แล้วกดเล่น อ่านด้วยเสียงไทยของเครื่อง ไม่ใช้เน็ต ปิดจอแล้วยังอ่านต่อ</p>
+    </div>
+    <!-- One box: a text field while editing, the same box shows the sentences while reading. -->
+    <div class="readbox" id="readBox">
+      <textarea id="readText" placeholder="วางหรือพิมพ์ข้อความที่นี่" aria-label="ข้อความที่จะอ่าน"></textarea>
+      <div class="reader" id="reader" aria-live="off" hidden></div>
     </div>
   </section>
 

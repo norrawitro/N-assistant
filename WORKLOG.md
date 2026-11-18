@@ -560,3 +560,33 @@ Owner phone notes from the same session:
   - the full-screen open;
   - the recognizer's start beep.
 - **Note:** on Android 14 the full-screen permission may need to be allowed in settings. The existing permission warning covers it.
+
+## 2026-11-18 (later): read-aloud page reworked
+
+**Owner asked for three changes:**
+1. All controls at the top, with no button lost or off the frame.
+2. One text box instead of two.
+3. The sentence being read stays in the same place while the text moves up, so the highlight never goes off the screen.
+
+### What changed
+- **Controls at the top.** The bar sits at the top of the page and stays there (sticky) if the page scrolls.
+  - **Row 1:** วางและเล่น, เล่น/หยุด, แก้ไข (new), ล้าง.
+  - **Row 2:** x1, x1.5, x2, x3.
+  - **Status line** under the rows.
+  - The big clock header is hidden on this page to give the text room. The old bar fixed to the bottom is gone.
+- **One box.** It is a text field while editing. While reading, the same box shows the sentences.
+  - **"แก้ไข"** stops reading and goes back to the text field.
+  - **"ล้าง"** empties the box and returns to editing.
+  - The box fills the screen below the controls and is resized when the window changes.
+- **Highlight held in place.** The sentence being read is kept at 30% of the box height; the text scrolls up under it. The box has space above the first sentence and below the last, so every sentence, the first and last included, reaches that line. Paragraph breaks show as line breaks.
+
+### Checks
+- **Browser, at 320×568, 360×640 and 400×860**, with a 41-sentence text:
+  - all 8 buttons are fully on screen and at least 44×40 px, in editing, in reading, and after scrolling the page;
+  - the box ends inside the screen, and only one of its two views shows at a time;
+  - the highlighted sentence stays at the same height in the box at sentences 1, 6, 16, 31 and 41, and is always inside it;
+  - "แก้ไข" returns to the text field;
+  - no errors and no sideways scrolling.
+- **Earlier tests:** the clipboard and wake-word tests still pass.
+- **Note:** the test page shows the notification-permission warning above the controls. On a phone where that permission is allowed, the box gets more room.
+- **Not tested** on the phone.
