@@ -42,8 +42,8 @@ import java.util.concurrent.Executors;
 public class AiService extends Service {
     private static final String CH_WORK = "ai_work_v1";
     private static final String CH_DONE = "ai_done_v1";
-    private static final int NOTIF_RUN = 4300;
-    private static final int NOTIF_DONE = 4301;
+    private static final int NOTIF_RUN = 4100; // not 4300/4301: those belong to the wake-word service
+    private static final int NOTIF_DONE = 4101;
     private static final String PREFS = "ai";
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
