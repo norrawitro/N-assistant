@@ -317,7 +317,13 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
     <div class="card">
       <div class="row" style="justify-content:space-between"><h3>คำตอบที่จำไว้ <span class="muted small" id="memCount"></span></h3><button class="link-btn" id="memClear" type="button">ล้างทั้งหมด</button></div>
       <p class="small muted">ทุกครั้งที่ AI ตอบ แอปจะจำคำถามและคำตอบไว้ ถามซ้ำแล้วบอทตอบได้ทันทีโดยไม่ต้องถาม AI ถ้าคำตอบเก่าไม่ถูก พูดว่า "ถาม AI ใหม่" ไม่จำคำถามที่คำตอบเปลี่ยนตามเวลา (วันนี้ ตอนนี้ อากาศ ราคา ข่าว) และคำสั่งอย่างตั้งเตือนหรือเปิดหน้า</p>
+      <p class="small muted" id="memFile">ความจำทั้งหมดถูกเขียนเป็นไฟล์ข้อความไว้ที่ <span class="mono">Documents/N-assistant/ความจำ.md</span> ให้อัตโนมัติ เปิดอ่านหรือแก้ได้ แล้วนำกลับเข้าแอปได้ด้วยปุ่ม "นำเข้าไฟล์" ด้านบน</p>
       <ol class="kblist" id="memList"></ol>
+    </div>
+    <div class="card">
+      <h3>ความรู้พื้นฐานในแอป <span class="muted small" id="faqCount"></span></h3>
+      <p class="small muted">คำถามพื้นฐานที่บอทตอบได้ทันทีตั้งแต่วันแรก ไม่ต้องใช้ AI เช่น ทำอะไรได้บ้าง ตั้งเตือนยังไง เบอร์ฉุกเฉิน ถามด้วยคำอื่นที่ความหมายใกล้กันก็ได้</p>
+      <details class="small"><summary>ดูรายการ</summary><ol class="kblist" id="faqList"></ol></details>
     </div>
   </section>
 
@@ -657,6 +663,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
 </div>
 
 <script src="kb.js"></script>
+<script src="faq.js"></script>
 <script src="bot.js"></script>
 <script src="app.js"></script>
 </body>

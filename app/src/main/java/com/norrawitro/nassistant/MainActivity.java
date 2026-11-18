@@ -616,6 +616,40 @@ public class MainActivity extends Activity {
             });
         }
 
+        /**
+         * Writes (or overwrites) a text file in Documents/N-assistant/, e.g. the answer memory as "ความจำ.md".
+         * Returns its path, or "" when it could not be written.
+         */
+        @JavascriptInterface
+        public String writeTextFile(String name, String text) {
+            String folder = android.os.Environment.DIRECTORY_DOCUMENTS + "/N-assistant/";
+            try {
+                android.content.ContentResolver cr = getContentResolver();
+                Uri files = android.provider.MediaStore.Files.getContentUri("external");
+                Uri uri = null;
+                try (android.database.Cursor c = cr.query(files, new String[]{android.provider.MediaStore.MediaColumns._ID},
+                        android.provider.MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?",
+                        new String[]{folder, name}, null)) {
+                    if (c != null && c.moveToFirst()) uri = android.content.ContentUris.withAppendedId(files, c.getLong(0));
+                }
+                if (uri == null) {
+                    android.content.ContentValues v = new android.content.ContentValues();
+                    v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                    v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/markdown");
+                    v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder);
+                    uri = cr.insert(files, v);
+                }
+                if (uri == null) return "";
+                try (OutputStream os = cr.openOutputStream(uri, "wt")) {
+                    if (os == null) return "";
+                    os.write(text.getBytes(StandardCharsets.UTF_8));
+                }
+                return folder + name;
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
         /** Android's own uninstall prompt for this app. */
         @JavascriptInterface
         public void uninstallSelf() {
