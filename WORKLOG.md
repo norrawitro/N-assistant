@@ -711,3 +711,19 @@ Owner phone notes from the same session:
   up to 10 minutes. Now: its own threads, a 15 s limit for the model list, and the page gives up after 20 s with a
   message, so a button never hangs.
 - "Model not found" now names the models Ollama does have (or says none are downloaded yet).
+
+## 2026-11-18 (later): read-aloud checklist from General (via Manager)
+
+Checked ☰ → อ่านออกเสียง against the tts-app checklist. Already passing: A1, A4-A8, A12, B1, B2, B4, B7, B8.
+Fixed:
+- A2: buttons read "▶ เล่น" / "■ หยุด"; "📋 วางและเล่น".
+- A3: stopping clears the highlight at once (the place is kept, so เล่น carries on).
+- A10: status shows "กำลังเตรียมเสียง…", then "พร้อมแล้ว · เสียง <name> (ไทย ไม่ใช้เน็ต)", and the voice while reading.
+- B3: picks the best installed Thai voice that needs no network (`isNetworkConnectionRequired()` false, not
+  "notInstalled").
+- B5: no offline Thai voice → a button "ติดตั้งเสียงภาษาไทย" opens Android's voice install screen.
+- B6: no speech engine at all → a button opens Speech Services by Google in the Play Store.
+- A11 / edge-to-edge (targetSdk 35): the WebView now sits in a holder padded by the system bars, the camera cutout
+  and the keyboard (adjustResize is ignored on Android 15). Read box minimum 100 px so it fits with the keyboard open.
+  Checked in a browser at 360×640, at 130 % font and with a 300 px keyboard: every control visible, no sideways scroll.
+- B9 (real sound on the owner's Tecno Pova 6 Pro) still needs the owner to try.

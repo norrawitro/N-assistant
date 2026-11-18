@@ -273,7 +273,7 @@
   function sizeReadBox() {
     if ($("p-read").hidden) return;
     const box = $("readBox"), top = box.getBoundingClientRect().top;
-    box.style.height = Math.max(150, Math.floor(window.innerHeight - Math.max(top, 0) - 12)) + "px";
+    box.style.height = Math.max(100, Math.floor(window.innerHeight - Math.max(top, 0) - 12)) + "px";
     // Space above the first and below the last sentence, so every sentence can sit at the anchor line.
     const r = $("reader"), h = box.clientHeight;
     r.style.paddingTop = Math.round(h * ANCHOR) + "px";
@@ -305,7 +305,7 @@
   }
   function setReadUi(playing, msg) {
     readPlaying = playing;
-    $("readPlay").textContent = playing ? "หยุด" : "เล่น";
+    $("readPlay").textContent = playing ? "■ หยุด" : "▶ เล่น";
     $("readPlay").classList.toggle("primary", playing);
     if (msg !== undefined) $("readStatus").textContent = msg;
   }
@@ -317,15 +317,25 @@
     saveRead();
     if (!A || !A.readStart) { setReadUi(false, "อ่านออกเสียงใช้ได้ในแอปบนมือถือเท่านั้น"); markSentence(from); return; }
     if (liveOn()) { if (A.liveStop) A.liveStop(); setLive(false, "off", "ปิด Live แล้ว (กำลังอ่านออกเสียง)"); }
+    $("readFix").hidden = true;
     A.readStart(JSON.stringify(readSentences), from, readRate);
-    markSentence(from); setReadUi(true, `กำลังอ่าน ความเร็ว x${readRate}`);
+    markSentence(from); setReadUi(true, `กำลังเตรียมเสียง… ความเร็ว x${readRate}`);
   }
-  function stopReading() { if (A && A.readStop) A.readStop(); setReadUi(false, "หยุดแล้ว แตะประโยคไหนเพื่ออ่านต่อจากตรงนั้น"); }
+  /** Stop at once: the highlight goes, the place is kept so "เล่น" carries on from that sentence. */
+  function clearHighlight() { $("reader").querySelectorAll("span.now").forEach(sp => sp.className = ""); }
+  function stopReading() { if (A && A.readStop) A.readStop(); clearHighlight(); setReadUi(false, "หยุดแล้ว กดเล่นเพื่ออ่านต่อ หรือแตะประโยคไหนเพื่ออ่านจากตรงนั้น"); }
+  let readVoice = "";
   handlers.read = e => {
     if (!e) return;
-    if (e.state === "playing") { markSentence(e.index); setReadUi(true, `ประโยคที่ ${e.index + 1} จาก ${e.total} · ความเร็ว x${readRate}`); }
+    if (e.state === "playing") { markSentence(e.index); setReadUi(true, `ประโยคที่ ${e.index + 1} จาก ${e.total} · ความเร็ว x${readRate}${readVoice ? " · " + readVoice : ""}`); }
     else if (e.state === "done") { markSentence(-1); setReadUi(false, "อ่านจบแล้ว"); }
-    else if (e.state === "stopped") setReadUi(false, "หยุดแล้ว แตะประโยคไหนเพื่ออ่านต่อจากตรงนั้น");
+    else if (e.state === "stopped") { clearHighlight(); setReadUi(false, "หยุดแล้ว กดเล่นเพื่ออ่านต่อ หรือแตะประโยคไหนเพื่ออ่านจากตรงนั้น"); }
+    else if (e.state === "ready") { readVoice = e.message || ""; setReadUi(true, `พร้อมแล้ว · ${readVoice} · ความเร็ว x${readRate}`); }
+    else if (e.state === "novoice" || e.state === "noengine") {
+      clearHighlight(); setReadUi(false, e.message);
+      const b = $("readFix"); b.hidden = false; b.dataset.kind = e.state;
+      b.textContent = e.state === "novoice" ? "ติดตั้งเสียงภาษาไทย" : "ติดตั้ง Speech Services by Google";
+    }
     else if (e.state === "error") setReadUi(readPlaying, e.message || "อ่านออกเสียงไม่ได้");
   };
   $("readPaste").addEventListener("click", async () => {
@@ -334,6 +344,12 @@
     if (!t) { try { t = await navigator.clipboard.readText(); } catch {} }
     if (!t || !t.trim()) { setReadUi(readPlaying, "คลิปบอร์ดว่าง คัดลอกข้อความมาก่อน"); return; }
     $("readText").value = t; startReading(0);
+  });
+  $("readFix").addEventListener("click", () => {
+    if (!A) return;
+    if ($("readFix").dataset.kind === "novoice") { if (A.installThaiVoice) A.installThaiVoice(); }
+    else if (A.installSpeechEngine) A.installSpeechEngine();
+    $("readFix").hidden = true; $("readStatus").textContent = "ติดตั้งเสร็จแล้วกลับมากดเล่นอีกครั้ง";
   });
   $("readPlay").addEventListener("click", () => { if (readPlaying) stopReading(); else startReading(readAt >= 0 ? readAt : 0); });
   $("readClear").addEventListener("click", () => {

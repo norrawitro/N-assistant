@@ -101,11 +101,25 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
     public void onInit(int status) {
         main.post(() -> {
             if (tts == null) return;
-            if (status != TextToSpeech.SUCCESS) { emit("error", index, "เปิดระบบเสียงพูดของเครื่องไม่ได้"); finish("error"); return; }
-            int lang = tts.setLanguage(new Locale("th", "TH"));
-            if (lang == TextToSpeech.LANG_MISSING_DATA || lang == TextToSpeech.LANG_NOT_SUPPORTED) {
-                emit("error", index, "เครื่องยังไม่มีเสียงพูดภาษาไทย ไปที่ ตั้งค่าเครื่อง → การเข้าถึง → เอาต์พุตการอ่านออกเสียง แล้วติดตั้งภาษาไทย");
+            if (status != TextToSpeech.SUCCESS) {
+                boolean noEngine = tts.getEngines() == null || tts.getEngines().isEmpty();
+                emit(noEngine ? "noengine" : "error", index, noEngine
+                        ? "เครื่องนี้ไม่มีระบบอ่านออกเสียง แตะเพื่อติดตั้ง Speech Services by Google"
+                        : "เปิดระบบเสียงพูดของเครื่องไม่ได้ ลองใหม่อีกครั้ง");
+                finish("quiet");
+                return;
             }
+            int lang = tts.setLanguage(new Locale("th", "TH"));
+            android.speech.tts.Voice voice = offlineThaiVoice(tts);
+            if (voice != null) tts.setVoice(voice);
+            if (voice == null && (lang == TextToSpeech.LANG_MISSING_DATA || lang == TextToSpeech.LANG_NOT_SUPPORTED)) {
+                emit("novoice", index, "เครื่องยังไม่มีเสียงพูดภาษาไทยแบบไม่ใช้เน็ต แตะเพื่อติดตั้งเสียงไทย");
+                finish("quiet");
+                return;
+            }
+            emit("ready", index, voice != null
+                    ? "เสียง " + voice.getName() + " (ไทย ไม่ใช้เน็ต)"
+                    : "เสียงไทยของเครื่อง (" + (tts.getDefaultEngine() == null ? "-" : tts.getDefaultEngine()) + ")");
             tts.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
@@ -126,6 +140,20 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
             ready = true;
             speakFrom(Math.max(0, index));
         });
+    }
+
+    /** The best Thai voice that is installed and needs no network, or null. */
+    private static android.speech.tts.Voice offlineThaiVoice(TextToSpeech tts) {
+        android.speech.tts.Voice best = null;
+        try {
+            for (android.speech.tts.Voice v : tts.getVoices()) {
+                if (v.getLocale() == null || !"th".equals(v.getLocale().getLanguage())) continue;
+                if (v.isNetworkConnectionRequired()) continue;
+                if (v.getFeatures() != null && v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
+                if (best == null || v.getQuality() > best.getQuality()) best = v;
+            }
+        } catch (Exception ignored) {}
+        return best;
     }
 
     private static int[] parse(String id) {
@@ -162,7 +190,7 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
         if (tts != null) { try { tts.stop(); tts.shutdown(); } catch (Exception ignored) {} tts = null; }
         ready = false;
         releaseWake();
-        if (was) emit(state, at, null);
+        if (was && !"quiet".equals(state)) emit(state, at, null); // "quiet": the reason was already sent
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
