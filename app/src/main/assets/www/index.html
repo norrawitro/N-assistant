@@ -422,6 +422,21 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <p class="small muted">การแจ้งเตือนมีปุ่ม "เลื่อน 10 นาที" และ "เสร็จแล้ว" การเตือนแบบทุกสัปดาห์จะซ้ำในวันเดียวกับวันที่ที่เลือก</p>
     </div>
     <div class="hist" id="rList"></div>
+    <div class="card">
+      <h2>เตือนตามสถานที่</h2>
+      <p class="small" id="whereNow">-</p>
+      <p class="small muted">ใช้ตำแหน่งจากแอป GPS-Tracker (ต้องเปิดบันทึกการเดินทางไว้) และสถานที่ที่ตั้งชื่อไว้ในนั้น การเตือนขึ้นตอนที่ GPS-Tracker จับพิกัดรอบถัดไป จึงอาจช้าตามความถี่ที่ตั้งไว้ในแอปนั้น</p>
+      <div class="field"><label for="prText">เตือนเรื่องอะไร</label><input type="text" id="prText" placeholder="เช่น อย่าลืมเติมน้ำมันรถ"></div>
+      <div class="alarm-row">
+        <div class="field"><label for="prWhen">เมื่อ</label>
+          <select id="prWhen"><option value="leave">ออกจาก</option><option value="enter">ถึง</option></select>
+        </div>
+        <div class="field"><label for="prPlace">สถานที่</label><input type="text" id="prPlace" list="prPlaces" placeholder="เช่น บ้าน"><datalist id="prPlaces"></datalist></div>
+      </div>
+      <div class="row"><button class="btn primary" id="prAdd" type="button">เพิ่มการเตือนตามสถานที่</button></div>
+      <p class="status" id="prStatus"></p>
+      <div class="hist" id="prList"></div>
+    </div>
   </section>
 
   <!-- HISTORY -->

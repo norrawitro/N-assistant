@@ -68,7 +68,7 @@
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     TABS.forEach(t => $("p-" + t).hidden = t !== name);
     if (name === "evening") renderChecks();
-    if (name === "remind") renderReminders();
+    if (name === "remind") { renderReminders(); readWhere(); renderPlaceRules(); }
     if (name === "chat") { renderChat(); setTimeout(() => $("chatLog").lastElementChild?.scrollIntoView({ block: "end" }), 50); }
     window.scrollTo(0, 0);
   }
@@ -451,6 +451,50 @@
   $("memClear").addEventListener("click", () => { if (memList().length && confirm("ล้างคำตอบที่จำไว้ทั้งหมด?")) saveMem([]); });
   let lastAsked = ""; // the last question that went to the AI or was answered from memory, for "ถาม AI ใหม่"
 
+  // ---------- place reminders, using where GPS-Tracker says the phone is ----------
+  const placeRules = () => (docs.placeRules && Array.isArray(docs.placeRules.list)) ? docs.placeRules.list : [];
+  function savePlaceRules(list) { save("placeRules", { list, updatedAt: Date.now() }); if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(list)); renderPlaceRules(); }
+  function addPlaceRule(when, place, text) { const r = { id: uid(), when, place: String(place).trim(), text: String(text).trim(), on: true, createdAt: Date.now() }; savePlaceRules([...placeRules(), r]); return r; }
+  const whenLabel = w => w === "leave" ? "ออกจาก" : "ถึง";
+  let where = null; // {place, at, since, places, type}
+  function readWhere() { try { where = A && A.whereNow ? JSON.parse(A.whereNow()) : null; } catch { where = null; } return where; }
+  const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "เมื่อสักครู่" : m < 60 ? `${m} นาทีที่แล้ว` : m < 1440 ? `${Math.round(m / 60)} ชั่วโมงที่แล้ว` : `${Math.round(m / 1440)} วันที่แล้ว`; };
+  function whereText() {
+    const w = where || readWhere();
+    const gps = A && A.gpsTrackerInstalled ? A.gpsTrackerInstalled() : false;
+    if (!gps) return "ยังไม่พบแอป GPS-Tracker ในเครื่องนี้";
+    if (!w || !w.at) return "ยังไม่ได้รับตำแหน่งจาก GPS-Tracker เปิดบันทึกการเดินทางใน GPS-Tracker แล้วรอรอบจับพิกัดถัดไป";
+    if (w.type === "stopped") return `GPS-Tracker หยุดบันทึกแล้ว (${ago(w.at)}) จึงไม่รู้ตำแหน่งตอนนี้`;
+    return w.place ? `ตอนนี้อยู่ที่ ${w.place}${w.since ? ` ตั้งแต่ ${hhmm(new Date(w.since))}` : ""} (ข้อมูล ${ago(w.at)})` : `ตอนนี้ไม่ได้อยู่ในสถานที่ที่ตั้งชื่อไว้ (ข้อมูล ${ago(w.at)})`;
+  }
+  function renderPlaceRules() {
+    $("whereNow").textContent = whereText();
+    const dl = $("prPlaces"); dl.textContent = "";
+    for (const n of (where && where.places) || []) { const o = document.createElement("option"); o.value = n; dl.appendChild(o); }
+    const box = $("prList"), list = placeRules();
+    box.innerHTML = list.length ? "" : '<p class="small muted">ยังไม่มีการเตือนตามสถานที่</p>';
+    for (const r of list) {
+      const d = document.createElement("div"); d.className = "day";
+      d.innerHTML = `<span class="d">${esc(whenLabel(r.when))}</span><div class="s">${esc(r.place)}<div class="small muted">${esc(r.text)}</div></div>`;
+      const b = document.createElement("button"); b.className = "link-btn"; b.type = "button"; b.textContent = "ลบ"; b.dataset.id = r.id; d.appendChild(b);
+      box.appendChild(d);
+    }
+  }
+  $("prList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    const r = placeRules().find(x => x.id === b.dataset.id);
+    if (r && confirm(`ลบการเตือน "${whenLabel(r.when)}${r.place}: ${r.text}"?`)) savePlaceRules(placeRules().filter(x => x.id !== r.id));
+  });
+  $("prAdd").addEventListener("click", () => {
+    const text = $("prText").value.trim(), place = $("prPlace").value.trim();
+    if (!text || !place) { $("prStatus").textContent = "ใส่เรื่องที่จะเตือนและชื่อสถานที่ก่อน"; return; }
+    const r = addPlaceRule($("prWhen").value, place, text);
+    $("prText").value = ""; $("prPlace").value = "";
+    const known = ((where && where.places) || []).some(n => n.replace(/\s+/g, "") === r.place.replace(/\s+/g, ""));
+    $("prStatus").textContent = `เพิ่มแล้ว: ${whenLabel(r.when)}${r.place} → ${r.text}` + (known ? "" : ` (ยังไม่พบ "${r.place}" ใน GPS-Tracker ชื่อต้องตรงกับที่ตั้งไว้ในแอปนั้น)`);
+  });
+  handlers.place = w => { where = w; renderPlaceRules(); };
+
   // ---------- quick bot (rules, always there) in front of the AI ----------
   let botPending = null;   // a question the bot asked and is waiting on, e.g. the time for a reminder
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
@@ -522,6 +566,12 @@
         if (!lines.length) liveReply("วันนี้ยังไม่มีที่จดไว้ให้ลบครับ", "bot");
         else { const l = lines[lines.length - 1]; removeLine(todayDate(), "notes", l); liveReply(`ลบที่จดล่าสุดแล้วครับ ${l.replace(/^•\s*/, "")}`, "bot"); }
       }
+    } else if (r.type === "placeReminder") {
+      const pr = addPlaceRule(r.when, r.place, r.text);
+      const known = ((readWhere() || {}).places || []).some(n => n.replace(/\s+/g, "") === pr.place.replace(/\s+/g, ""));
+      liveReply(`ตั้งแล้วครับ เมื่อ${whenLabel(pr.when)}${pr.place} จะเตือนว่า ${pr.text}` + (known ? "" : ` แต่ยังไม่พบสถานที่ชื่อ ${pr.place} ใน GPS-Tracker ชื่อต้องตรงกับที่ตั้งไว้ในแอปนั้นครับ`), "bot");
+    } else if (r.type === "whereNow") {
+      readWhere(); liveReply(whereText(), "bot");
     } else if (r.type === "askAgain") {
       if (!lastAsked) liveReply("ยังไม่มีคำถามก่อนหน้าให้ถามใหม่ครับ", "bot");
       else if (liveJob) liveReply("เอไอกำลังคิดคำถามก่อนหน้าอยู่ครับ รอสักครู่", "bot");
@@ -1156,7 +1206,7 @@ ${contextText(date)}
   const csvCell = v => `"${String(v ?? "").replace(/"/g, '""').replace(/\r?\n/g, " / ")}"`;
   function buildExport(kind) {
     const days = allDays();
-    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), kb: kbFiles(), memory: memList(), days }, null, 2);
+    if (kind === "json") return JSON.stringify({ app: "N-assistant", exportedAt: new Date().toISOString(), settings: settings(), reminders: reminders(), placeRules: placeRules(), kb: kbFiles(), memory: memList(), days }, null, 2);
     if (kind === "csv") {
       const head = ["วันที่", "งานวันนี้", "เรื่องกังวล", "พลังงาน", "เป้าหลัก", "งานสำคัญ", "ควรระวัง", "แผนตามเวลา", "งานที่เสร็จ", "จำนวนเสร็จ", "อัปเดตตอนเย็น", "เรื่องดี", "ยกไปพรุ่งนี้", "อารมณ์", "สรุปจาก AI"];
       const rows = days.map(d => { const b = d.morning?.brief || {}, pr = b.priorities || [], dn = d.evening?.done || [];
@@ -1200,6 +1250,11 @@ ${contextText(date)}
         if (A) A.setReminders(JSON.stringify(merged));
       }
       if (Array.isArray(data.notes)) { docs.notes = { list: data.notes }; migrateNotes(); } // backups from v1.0.23-1.0.25
+      if (Array.isArray(data.placeRules)) {
+        const have = new Set(placeRules().map(r => r.id));
+        docs.placeRules = { list: [...placeRules(), ...data.placeRules.filter(r => r && r.id && r.place && r.text && !have.has(r.id))], updatedAt: Date.now() };
+        if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(docs.placeRules.list));
+      }
       if (Array.isArray(data.memory)) {
         const have = new Set(memList().map(m => m.id));
         docs.memory = { list: [...memList(), ...data.memory.filter(m => m && m.id && m.q && m.a && !have.has(m.id))].slice(-MEM_MAX), updatedAt: Date.now() };
@@ -1438,6 +1493,7 @@ ${contextText(date)}
   $("appVer").textContent = info ? info.version : "เว็บ";
   pullResults();
   migrateNotes(); migrateChat();
+  if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(placeRules())); // native copy for the event receiver
   hydrate(); renderHistory(); renderKb(); renderMem(); setLiveMode(liveMode); showTab("live");
   if (A) {
     A.setReminders(JSON.stringify(reminders()));

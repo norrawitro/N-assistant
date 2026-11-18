@@ -187,6 +187,12 @@ public class MainActivity extends Activity {
                 + ",\"message\":" + JSONObject.quote(message == null ? "" : message) + "}");
     }
 
+    /** Where the phone is, from GPS-Tracker, for the page if it is on screen. */
+    static void placeEvent(String whereJson) {
+        MainActivity a = visible;
+        if (a != null && a.pageReady) a.emit("place", whereJson);
+    }
+
     static boolean deliver(JSONObject res) {
         MainActivity a = visible;
         if (a == null || !a.pageReady) return false;
@@ -473,6 +479,21 @@ public class MainActivity extends Activity {
                 Intent i = getPackageManager().getLaunchIntentForPackage(TermuxOllama.PKG);
                 if (i != null) startActivity(i);
             });
+        }
+
+        // ---------- GPS-Tracker link ----------
+
+        @JavascriptInterface
+        public void setPlaceRules(String json) { PlaceEvents.saveRules(MainActivity.this, json); }
+
+        @JavascriptInterface
+        public String whereNow() { return PlaceEvents.where(MainActivity.this); }
+
+        /** Whether GPS-Tracker is installed. */
+        @JavascriptInterface
+        public boolean gpsTrackerInstalled() {
+            try { getPackageManager().getPackageInfo("com.norrawitro.gpstracker", 0); return true; }
+            catch (Exception e) { return false; }
         }
 
         // ---------- read aloud ----------

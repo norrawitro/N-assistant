@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Arrive / leave events from GPS-Tracker. Declared in both apps; only apps signed with the same key get it. -->
+    <permission
+        android:name="com.norrawitro.gpstracker.permission.PLACE_EVENTS"
+        android:label="รับเหตุการณ์เข้าออกสถานที่จาก GPS-Tracker"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.norrawitro.gpstracker.permission.PLACE_EVENTS" />
     <!-- Live: Thai speech to text with the phone's own recognizer, only while the app is on screen. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Lets the app start "ollama serve" in Termux by itself (the person grants it once). -->
@@ -12,6 +18,7 @@
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <package android:name="com.termux" />
+        <package android:name="com.norrawitro.gpstracker" />
     </queries>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -53,6 +60,14 @@
         <receiver android:name=".StopAlarmReceiver" android:exported="false" />
         <receiver android:name=".Reminders" android:exported="false" />
 
+        <receiver
+            android:name=".PlaceEvents"
+            android:exported="true"
+            android:permission="com.norrawitro.gpstracker.permission.PLACE_EVENTS">
+            <intent-filter>
+                <action android:name="com.norrawitro.gpstracker.PLACE_EVENT" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".ReadAloudService"
             android:exported="false"
