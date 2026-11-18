@@ -703,3 +703,11 @@ Owner phone notes from the same session:
     wake-word notification. Now 4100/4101.
 - New in Settings: "ทดสอบ AI" saves the settings and sends a short real question through the same path as Live,
   then shows the reply and the seconds it took, or the exact error.
+
+## 2026-11-18 (later): Ollama buttons that did nothing
+
+- "ทดสอบการเชื่อมต่อ" and "เปิด Ollama ตอนนี้" stayed greyed out with no message on the owner's phone. Both ask
+  Ollama through `localRequest`, which shared one background thread with update checks and downloads and waited
+  up to 10 minutes. Now: its own threads, a 15 s limit for the model list, and the page gives up after 20 s with a
+  message, so a button never hangs.
+- "Model not found" now names the models Ollama does have (or says none are downloaded yet).

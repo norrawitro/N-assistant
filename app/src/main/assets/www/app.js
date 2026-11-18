@@ -1605,7 +1605,11 @@ ${contextText(date)}
   function localGet(path) {
     const base = ($("sLocalUrl").value.trim() || settings().localUrl).replace(/\/+$/, "");
     if (!A) return Promise.reject(new Error("AI ในเครื่องใช้ได้เฉพาะในแอปบนมือถือ"));
-    return new Promise(resolve => { const id = "r" + (++reqSeq); pendingLocal[id] = resolve; A.localRequest(id, "GET", base + path, ""); })
+    return new Promise(resolve => {
+      const id = "r" + (++reqSeq); pendingLocal[id] = resolve; A.localRequest(id, "GET", base + path, "");
+      // Never leave a button waiting forever.
+      setTimeout(() => { if (pendingLocal[id]) { delete pendingLocal[id]; resolve({ id, error: "Ollama ไม่ตอบภายใน 20 วินาที" }); } }, 20000);
+    })
       .then(r => {
         if (r.error === "offline") throw new Error("ติดต่อ Ollama ไม่ได้ เปิด Termux แล้วรัน: ollama serve");
         if (r.error) throw new Error("ติดต่อ AI ในเครื่องไม่สำเร็จ: " + r.error);

@@ -214,7 +214,7 @@ public class AiService extends Service {
                     ? data.optJSONObject("error").optString("message") : data.optString("error");
             String msg;
             if (status == 404 && "openai".equals(format)) msg = "ไม่พบที่อยู่ API หรือโมเดลนี้ ตรวจ Base URL และชื่อโมเดลในแท็บ \"ตั้งค่า\"";
-            else if (status == 404 && "ollama".equals(format)) msg = "ไม่พบโมเดลนี้ใน Ollama เลือกโมเดลใหม่ในแท็บ \"ตั้งค่า\"";
+            else if (status == 404 && "ollama".equals(format)) msg = "ไม่พบโมเดล " + body.optString("model") + " ใน Ollama " + installedModels(url);
             else if (status == 401) msg = "API key ไม่ถูกต้อง ตรวจสอบในแท็บ \"ตั้งค่า\"";
             else if (status == 429) msg = "ใช้งานถี่เกินไป หรือเครดิตในบัญชี API หมด รอสักครู่แล้วลองใหม่";
             else if (status >= 500) msg = "ระบบ AI ยุ่งอยู่ ลองใหม่อีกครั้งในอีกสักครู่";
@@ -248,6 +248,37 @@ public class AiService extends Service {
         r.put("ok", true);
         r.put("text", text);
         return r;
+    }
+
+    /** Names the models Ollama does have, so the owner knows what to pick (or that one must be downloaded first). */
+    private static String installedModels(String chatUrl) {
+        try {
+            String tagsUrl = chatUrl.replaceAll("/api/chat$", "/api/tags");
+            HttpURLConnection c = (HttpURLConnection) new URL(tagsUrl).openConnection();
+            c.setConnectTimeout(3000);
+            c.setReadTimeout(8000);
+            JSONArray models = new JSONObject(new String(readAll(c.getInputStream()), StandardCharsets.UTF_8)).optJSONArray("models");
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; models != null && i < models.length(); i++) {
+                String n = models.optJSONObject(i) == null ? "" : models.optJSONObject(i).optString("name");
+                if (!n.isEmpty()) names.append(names.length() > 0 ? ", " : "").append(n);
+            }
+            return names.length() == 0
+                    ? "และในเครื่องยังไม่มีโมเดลเลย ใน Termux พิมพ์: ollama pull qwen3.5:4b"
+                    : "ในเครื่องมี: " + names + " ไปที่ตั้งค่า กด \"ทดสอบการเชื่อมต่อ\" แล้วเลือกตัวใดตัวหนึ่ง แล้วกดบันทึก";
+        } catch (Exception e) {
+            return "เลือกโมเดลใหม่ในแท็บ \"ตั้งค่า\"";
+        }
+    }
+
+    private static byte[] readAll(InputStream in) throws Exception {
+        try (InputStream s = in) {
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = s.read(buf)) > 0) bo.write(buf, 0, n);
+            return bo.toByteArray();
+        }
     }
 
     static String termuxFailure(String status) {
