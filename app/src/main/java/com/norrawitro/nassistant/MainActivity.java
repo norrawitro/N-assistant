@@ -47,6 +47,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    /** Requests to Ollama get their own threads: one slow request (or an update download on io) never blocks another. */
+    private final ExecutorService local = Executors.newCachedThreadPool();
     private String pendingRing;
     private String pendingSave;
     private File downloadedApk;
@@ -754,7 +756,7 @@ public class MainActivity extends Activity {
          */
         @JavascriptInterface
         public void localRequest(String id, String method, String url, String body) {
-            io.execute(() -> {
+            local.execute(() -> {
                 JSONObject out = new JSONObject();
                 try {
                     out.put("id", id);
@@ -765,7 +767,8 @@ public class MainActivity extends Activity {
                     }
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
                     c.setConnectTimeout(5000);
-                    c.setReadTimeout(10 * 60 * 1000); // small phones can take minutes to answer
+                    // Asking for the model list is quick; only a real question may take minutes on a small phone.
+                    c.setReadTimeout("GET".equals(method) ? 15_000 : 10 * 60 * 1000);
                     c.setRequestMethod(method);
                     if (body != null && !body.isEmpty()) {
                         c.setDoOutput(true);
