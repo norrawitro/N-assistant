@@ -696,7 +696,17 @@
     const slow = pv === "local" ? " AI ในเครื่องอาจใช้ 1–3 นาที" : pv === "githubmd" ? " รอ AI ภายนอกตอบในไฟล์ MD (10 วินาที–1 นาทีขึ้นไป)" : "";
     return `กำลังคิด… ${sec} วินาที${slow}`;
   }
-  const abandonedLive = new Set(); // answers that arrive after the 5-minute timeout are not shown twice
+  // Questions sent to the AI, by job id, kept on the phone: an answer that arrives after the page was closed and
+  // reopened is still matched to its question (for the answer memory), and a cancelled one is still ignored.
+  const ASKED_KEY = "nassistant.liveAsked";
+  function askedAll() { try { const m = JSON.parse(localStorage.getItem(ASKED_KEY) || "{}"); return m && typeof m === "object" ? m : {}; } catch { return {}; } }
+  function askedPut(id, v) {
+    const m = askedAll(), now = Date.now();
+    for (const k of Object.keys(m)) if (!m[k] || now - (m[k].at || 0) > 24 * 3600 * 1000) delete m[k]; // drop entries older than a day
+    if (v === null) delete m[id]; else m[id] = { ...(m[id] || {}), ...v };
+    try { localStorage.setItem(ASKED_KEY, JSON.stringify(m)); } catch {}
+  }
+  const abandonedLive = { has: id => !!(askedAll()[id] || {}).abandoned, add: id => askedPut(id, { abandoned: true, at: Date.now() }) };
   const listeningWhileThinking = () => `กำลังฟัง… พูดได้เลย (เอไอกำลังคิด ${liveJob ? Math.floor((Date.now() - liveJob.at) / 1000) : 0} วินาที)`;
   function stopThinking() {
     if (!liveJob) return;
@@ -755,6 +765,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
     catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return false; }
     liveJob = { id: job.id, at: Date.now(), q: text };
+    askedPut(job.id, { q: text, at: Date.now() });
     lastAsked = text;
     liveJob.tick = setInterval(() => {
       const st = $("liveSwitch").dataset.state;
@@ -780,8 +791,9 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     if (askLiveAI("ข้อมูลเพิ่มเติมจากผู้ใช้ (พูดระหว่างรอคำตอบก่อนหน้า): " + more)) addConvo("note", "ส่งข้อมูลเพิ่มให้ AI แล้ว");
   }
   function applyLiveResult(res) {
-    if (abandonedLive.has(res.id)) return; // already reported as "no answer in 5 minutes"
-    const askedQ = liveJob && res.id === liveJob.id ? liveJob.q : "";
+    if (abandonedLive.has(res.id)) { askedPut(res.id, null); return; } // cancelled, or already reported as "no answer in 5 minutes"
+    const askedQ = liveJob && res.id === liveJob.id ? liveJob.q : ((askedAll()[res.id] || {}).q || "");
+    askedPut(res.id, null);
     if (liveJob && res.id === liveJob.id) stopThinking();
     // Otherwise it belongs to an earlier question (for example from before the app was reopened): still log it.
     if (!res.ok) {

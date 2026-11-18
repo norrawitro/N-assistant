@@ -590,3 +590,22 @@ Owner phone notes from the same session:
 - **Earlier tests:** the clipboard and wake-word tests still pass.
 - **Note:** the test page shows the notification-permission warning above the controls. On a phone where that permission is allowed, the box gets more room.
 - **Not tested** on the phone.
+
+## 2026-11-18 (later): answer memory survives the page being closed
+
+**Owner's question:** after Live is stopped, are questions still sent to the AI, with the answer awaited so the memory gets updated?
+
+**Answer:** mostly yes. The AI job runs in `AiService`, and the answer is always written into the conversation log.
+
+**Gap found:** which question a job belonged to was only kept in the page's memory. If Android closed the page while the AI was thinking, the answer still arrived and was logged when the app reopened. But it was not saved to the answer memory, and a cancelled question's late answer could show up again.
+
+**Fix:**
+- The questions sent to the AI are kept on the phone by job id (localStorage, entries older than a day are dropped).
+- An answer that arrives after a reopen is matched to its question and remembered.
+- A cancelled or timed-out job is marked, so its late answer is still ignored after a reopen.
+
+**Checks:** a browser test with a mock bridge:
+- ask, close and reopen the page with the answer waiting: the answer is logged;
+- the same question then comes from memory;
+- a cancelled question's answer after a reopen is ignored.
+- The earlier memory and Live-off tests still pass.
