@@ -27,6 +27,11 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         void heard(String text);
         void spoke(String text);
         void partial(String text);
+        /**
+         * The microphone light: loudness 0..1 and the voice's pitch in Hz (0 when unknown), about 12 times a second
+         * while listening.
+         */
+        void level(float loud, float hz);
     }
 
     private static final Locale THAI = new Locale("th", "TH");
@@ -233,8 +238,35 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
 
     @Override public void onReadyForSpeech(Bundle params) {}
     @Override public void onBeginningOfSpeech() {}
-    @Override public void onRmsChanged(float rmsdB) {}
-    @Override public void onBufferReceived(byte[] buffer) {}
+    // ---------- microphone light ----------
+    private long lastLevelAt;
+    private float hz;
+
+    /** Called by the recognizer about 10-50 times a second with the sound level in dB (about -2 quiet to 10 loud). */
+    @Override public void onRmsChanged(float rmsdB) {
+        long now = System.currentTimeMillis();
+        if (now - lastLevelAt < 80) return;
+        lastLevelAt = now;
+        float loud = Math.max(0f, Math.min(1f, (rmsdB + 2f) / 12f));
+        ev.level(loud, loud < 0.15f ? 0f : hz);
+    }
+
+    /**
+     * Some recognizers also hand over the raw sound (16-bit, 16 kHz): estimate the pitch from how often the wave
+     * crosses zero. Most phones never call this; the light then follows the loudness only.
+     */
+    @Override public void onBufferReceived(byte[] buffer) {
+        if (buffer == null || buffer.length < 320) return;
+        int n = buffer.length / 2, crossings = 0;
+        short prev = 0;
+        for (int i = 0; i < n; i++) {
+            short s = (short) ((buffer[2 * i] & 0xff) | (buffer[2 * i + 1] << 8));
+            if (i > 0 && ((prev < 0) != (s < 0))) crossings++;
+            prev = s;
+        }
+        float est = crossings * 16000f / (2f * n);
+        if (est >= 60 && est <= 1000) hz = hz == 0 ? est : hz * 0.7f + est * 0.3f;
+    }
     @Override public void onEndOfSpeech() {}
     @Override public void onEvent(int eventType, Bundle params) {}
 }

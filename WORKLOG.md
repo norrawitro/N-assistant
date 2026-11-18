@@ -675,7 +675,10 @@ Owner phone notes from the same session:
   - No errors and no sideways scrolling. The earlier tests still pass.
 - Not tested on the phone, including the file in Documents.
 
-## Waiting to be done (with the next change)
+## 2026-11-18 (later): microphone light in Live
 
-- Microphone light: an icon or button light that glows and changes colour with the loudness and pitch of the sound,
-  so the owner can see the app is hearing. Asked 2026-11-18; the owner said to do it together with the next change, not now.
+- While Live listens, the LIVE button's ring glows brighter the louder the sound, and changes colour:
+  from blue-green (soft or low voice) to orange (loud or high voice). It goes out after 0.7 s without sound.
+- Loudness comes from the phone's speech recognizer (`onRmsChanged`). Pitch only when the recognizer also hands over
+  the raw sound (`onBufferReceived`, zero-crossing estimate); most phones do not, and then the colour follows loudness.
+- Not tested on a real phone yet.

@@ -133,7 +133,7 @@
     if (on && state === "listening" && liveJob) message = listeningWhileThinking();
     if (message) $("liveStatus").textContent = message;
     else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
-    if (!on || state !== "listening") $("livePartial").textContent = "";
+    if (!on || state !== "listening") { $("livePartial").textContent = ""; $("liveSwitch").classList.remove("hearing"); }
   }
   $("liveSwitch").addEventListener("click", () => {
     if (!A || !A.liveStart) { $("liveStatus").textContent = "Live ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
@@ -144,6 +144,21 @@
     if (!p) return;
     // Turning Live off does not stop the AI: its answer still goes into the conversation log (it is not spoken).
     setLive(!!p.on, p.state, p.message);
+  };
+  // Microphone light: loudness sets the glow, pitch sets the colour. Without pitch (most phones) the colour follows
+  // the loudness, from blue (soft) to orange (loud). The light goes out when no level has come for a moment.
+  let micOff = null;
+  handlers.liveLevel = l => {
+    const sw = $("liveSwitch");
+    if (!l || sw.getAttribute("aria-checked") !== "true" || sw.dataset.state !== "listening") { sw.classList.remove("hearing"); return; }
+    const lv = Math.max(0, Math.min(1, +l.loud || 0)), hz = +l.hz || 0;
+    // 80 Hz -> 210 (blue), 400 Hz+ -> 20 (orange), on a log scale like the ear hears it.
+    const hue = hz > 0 ? 210 - 190 * Math.max(0, Math.min(1, Math.log(hz / 80) / Math.log(5))) : 210 - 190 * lv;
+    sw.style.setProperty("--mic-lv", lv.toFixed(2));
+    sw.style.setProperty("--mic-hue", String(Math.round(hue)));
+    sw.classList.add("hearing");
+    clearTimeout(micOff);
+    micOff = setTimeout(() => sw.classList.remove("hearing"), 700);
   };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
   handlers.liveHeard = t => {
