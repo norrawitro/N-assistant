@@ -727,3 +727,12 @@ Fixed:
   and the keyboard (adjustResize is ignored on Android 15). Read box minimum 100 px so it fits with the keyboard open.
   Checked in a browser at 360×640, at 130 % font and with a 300 px keyboard: every control visible, no sideways scroll.
 - B9 (real sound on the owner's Tecno Pova 6 Pro) still needs the owner to try.
+
+## 2026-11-19: custom AI (Tailscale address) would not connect
+
+- The owner's custom provider is an OpenAI-style server reached by a `.ts.net` (Tailscale) address. The app adds
+  `/chat/completions` itself, so a pasted full endpoint became `.../chat/completions/chat/completions` (404).
+  Now a trailing `/chat/completions` is removed before use.
+- Network failures other than "connection refused" and timeout used to surface as "งานไม่ถูกต้อง: …". Now: name not
+  found, https/certificate failure and other I/O errors each get a plain message naming the host, with a reminder that
+  `.ts.net` addresses work only while the Tailscale app is connected. The 404 message shows the full address tried.

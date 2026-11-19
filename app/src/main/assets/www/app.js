@@ -1091,7 +1091,8 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
       Object.assign(job, { format: "githubmd", url: "", headers: {}, body: {}, repo, path, token, key, text: userText || prompt });
     } else if (s.provider === "openai") {
       // Any provider with an OpenAI-compatible API. JSON is asked for in the prompt, which every provider supports.
-      const base = String(s.otherUrl || "").trim().replace(/\/+$/, "");
+      // The app adds /chat/completions itself; people often paste the whole endpoint, which doubled it (a 404).
+      const base = String(s.otherUrl || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "").replace(/\/+$/, "");
       const key = otherKey(), model = String(s.otherModel || "").trim();
       if (!/^https:\/\//.test(base)) throw new Error("ยังไม่ได้ใส่ที่อยู่ API ที่ขึ้นต้นด้วย https ไปที่ \"ตั้งค่า\" ก่อน");
       if (!key) throw new Error("ยังไม่ได้ใส่ API key ของผู้ให้บริการ ไปที่ \"ตั้งค่า\" ก่อน");

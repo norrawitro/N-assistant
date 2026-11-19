@@ -191,7 +191,8 @@ public class AiService extends Service {
                 resp = post(url, headers, body);
             }
         } catch (ConnectException e) {
-            if (!local) return failure(job, "เชื่อมต่ออินเทอร์เน็ตไม่ได้");
+            if (!local) return failure(job, "ต่อ " + u.getHost() + " ไม่ได้ (เซิร์ฟเวอร์ไม่ตอบรับ) ตรวจว่าเซิร์ฟเวอร์เปิดอยู่ และที่อยู่ถูกต้อง"
+                    + (u.getHost() != null && u.getHost().endsWith(".ts.net") ? " · ที่อยู่ .ts.net ต้องเปิดแอป Tailscale บนมือถือให้ต่ออยู่ก่อน" : ""));
             String started = ctx == null ? "no_context" : TermuxOllama.start(ctx);
             if (!"started".equals(started)) return failure(job, termuxFailure(started));
             // Give "ollama serve" up to 30 seconds to come up, then send the request again.
@@ -204,6 +205,13 @@ public class AiService extends Service {
             if (resp == null) return failure(job, "สั่ง Termux เปิด Ollama แล้วแต่ยังติดต่อไม่ได้ ตรวจว่าตั้ง allow-external-apps=true ใน Termux แล้ว และติดตั้ง Ollama ไว้แล้ว (ดูขั้นตอนในตั้งค่า)");
         } catch (SocketTimeoutException e) {
             return failure(job, "AI ใช้เวลานานเกินไป ลองใหม่อีกครั้ง หรือเลือกโมเดลที่เล็กลง");
+        } catch (java.net.UnknownHostException e) {
+            return failure(job, "หาเซิร์ฟเวอร์ " + u.getHost() + " ไม่เจอ"
+                    + (u.getHost() != null && u.getHost().endsWith(".ts.net") ? " · ที่อยู่ .ts.net ใช้ได้เมื่อเปิดแอป Tailscale บนมือถือและต่ออยู่เท่านั้น" : " ตรวจการสะกดที่อยู่และสัญญาณอินเทอร์เน็ต"));
+        } catch (javax.net.ssl.SSLException e) {
+            return failure(job, "เชื่อมต่อแบบ https กับ " + u.getHost() + " ไม่ผ่าน (ใบรับรองไม่ถูกต้อง หรือเซิร์ฟเวอร์ไม่ได้เปิด https): " + e.getMessage());
+        } catch (java.io.IOException e) {
+            return failure(job, "ติดต่อ " + u.getHost() + " ไม่สำเร็จ: " + e.getMessage());
         }
 
         int status = Integer.parseInt(resp[0]);
@@ -213,7 +221,7 @@ public class AiService extends Service {
             String apiMsg = data.optJSONObject("error") != null
                     ? data.optJSONObject("error").optString("message") : data.optString("error");
             String msg;
-            if (status == 404 && "openai".equals(format)) msg = "ไม่พบที่อยู่ API หรือโมเดลนี้ ตรวจ Base URL และชื่อโมเดลในแท็บ \"ตั้งค่า\"";
+            if (status == 404 && "openai".equals(format)) msg = "ไม่พบที่อยู่ API หรือโมเดลนี้ (" + url + ") ที่อยู่ API ควรจบที่ /v1 ไม่ต้องใส่ /chat/completions ตรวจชื่อโมเดลด้วย" + (apiMsg.isEmpty() ? "" : " · เซิร์ฟเวอร์ตอบว่า: " + apiMsg);
             else if (status == 404 && "ollama".equals(format)) msg = "ไม่พบโมเดล " + body.optString("model") + " ใน Ollama " + installedModels(url);
             else if (status == 401) msg = "API key ไม่ถูกต้อง ตรวจสอบในแท็บ \"ตั้งค่า\"";
             else if (status == 429) msg = "ใช้งานถี่เกินไป หรือเครดิตในบัญชี API หมด รอสักครู่แล้วลองใหม่";
