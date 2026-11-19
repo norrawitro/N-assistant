@@ -770,3 +770,9 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Idea: hold the recognized text in LiveVoice and answer only after 3 s with no new speech; new words are added to the
   same phrase. Stop listening before answering. Recognizer errors while holding re-arm the 3 s timer.
 - Status: the code change was made and then reverted at the owner's request ("แค่จดก็พอ"). Nothing is built or released.
+
+## 2026-11-19: custom AI connected on the owner's phone
+
+- The AI that now answers is the owner's own server at `wkw` (the Tailscale address `wkw.tail85b885.ts.net`), used
+  through "ผู้ให้บริการอื่น" with a base URL ending at `/v1`. It works while the Tailscale app on the phone is connected.
+- Not yet recorded: the model name and the reply time. The owner can read them from ตั้งค่า → ทดสอบ AI, or from ☰ menu.
