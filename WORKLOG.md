@@ -753,3 +753,7 @@ Nothing below is built. Pick one at a time when there is quota again.
 3. Use less AI quota in the app: show how many AI calls were answered by the bot / knowledge base / memory / FAQ and how many went to the AI; widen the FAQ.
 4. Mic light colour from pitch only works where the phone hands over raw sound; if it matters, measure the pitch ourselves from the microphone (needs a second audio reader beside the recognizer; check first that Android allows it).
 5. Clean-up: today's GPS-Tracker CSV keeps its old header over the new distance columns; a header rewrite at midnight would fix it.
+
+## 2026-11-19: wording while the AI thinks
+
+- The bot's line while the AI works is now "ขอคิดสักครู่นะครับ" (was "ขอส่งให้เอไอคิดสักครู่นะครับ"); the first-time line starts "เรื่องนี้ขอคิดสักครู่นะครับ ระหว่างรอ …".

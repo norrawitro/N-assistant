@@ -714,8 +714,8 @@
       return;
     }
     if (!askLiveAI(t)) return; // it already said why the AI cannot be used
-    if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอส่งให้เอไอคิดนะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
-    else liveReply("ขอส่งให้เอไอคิดสักครู่นะครับ", "bot");
+    if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอคิดสักครู่นะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
+    else liveReply("ขอคิดสักครู่นะครับ", "bot");
   }
   let botPrefix = ""; // for a close match: "ถ้าหมายถึง … ก็คือ" before the answer
   function applyBot(r) {
