@@ -763,3 +763,10 @@ Nothing below is built. Pick one at a time when there is quota again.
 - The ☰ menu now opens with "AI: <name>" and the last "ทดสอบ AI" result (ok + seconds, or the error), with the time.
   The result is kept on the phone (`nassistant.aiStatus`), so it is still there after a restart. If the AI setting was
   changed after the test, the menu says the test was made with the earlier setting.
+
+## Noted, not built (2026-11-19): wait for silence before Live answers
+
+- Owner's request: before Live answers, stay quiet for more than 3 seconds so we are sure the speaker has finished.
+- Idea: hold the recognized text in LiveVoice and answer only after 3 s with no new speech; new words are added to the
+  same phrase. Stop listening before answering. Recognizer errors while holding re-arm the 3 s timer.
+- Status: the code change was made and then reverted at the owner's request ("แค่จดก็พอ"). Nothing is built or released.
