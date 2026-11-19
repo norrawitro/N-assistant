@@ -784,3 +784,8 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Needed from the owner: wkw's documentation, or the output of its `/v1/models` list (from a phone or PC with Tailscale on).
 - Then: write a how-to for wkw (in the app's help and here), covering only what wkw actually offers.
 - Status: noted only. Nothing built.
+
+## Noted, not built (2026-11-19): check that the person has finished before Live replies
+
+- Owner's request, same idea as the 3-second quiet wait above: before Live answers, check that no person is still
+  speaking (not only a quiet gap). Not built; the owner has not asked for a build yet.
