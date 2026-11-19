@@ -812,3 +812,11 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Every answer, including the bot's quick answers, waits for 2 s of silence before the phone speaks it. If the person
   starts again while waiting, the answer keeps waiting and the new words join the phrase.
 - Not tested on a real phone yet; compiled by CI only.
+
+## 2026-11-19: check the room is quiet before the phone speaks
+
+- Owner's rule: after a voice command, keep listening until 2 s of silence, then send the whole command to the AI as
+  fast as possible. Before the phone speaks an answer, check the surroundings: if any sound was heard in the last 2 s,
+  wait until it goes still.
+- The sound check uses the recognizer's level (`onRmsChanged`) with a threshold of 1.5 dB (SOUND_DB). This is a guess;
+  it must be tuned on the owner's phone in a quiet room and a noisy one.
