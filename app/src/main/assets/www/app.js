@@ -77,7 +77,19 @@
   handlers.tab = name => showTab(name);
 
   // ---------- menu (all earlier features) and settings button ----------
-  function setMenu(open) { $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open)); }
+  function setMenu(open) { $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open)); if (open) renderMenuAi(); }
+  // The AI in use, and what the last "ทดสอบ AI" found (kept on this phone so it is there after a restart).
+  const AI_STATUS_KEY = "nassistant.aiStatus";
+  function aiLastTest() { try { return JSON.parse(localStorage.getItem(AI_STATUS_KEY) || "null"); } catch { return null; } }
+  function renderMenuAi() {
+    const t = aiLastTest(), name = aiName();
+    let line;
+    if (!t) line = "ยังไม่เคยทดสอบ กดทดสอบ AI ในตั้งค่า";
+    else if (t.ok) line = `ใช้ได้ · ตอบใน ${t.sec} วินาที · ทดสอบเมื่อ ${t.when}`;
+    else line = `ไม่สำเร็จ: ${t.msg} · ${t.when}`;
+    if (t && t.name !== name) line += "\n(ทดสอบกับการตั้งค่าก่อนหน้า)";
+    $("menuAi").textContent = `AI: ${name}\n${line}`;
+  }
   $("menuBtn").addEventListener("click", e => { e.stopPropagation(); setMenu($("menu").hidden); });
   $("menu").addEventListener("click", e => {
     const b = e.target.closest("[data-go]"); if (!b) return;
@@ -714,8 +726,8 @@
       return;
     }
     if (!askLiveAI(t)) return; // it already said why the AI cannot be used
-    if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอส่งให้เอไอคิดนะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
-    else liveReply("ขอส่งให้เอไอคิดสักครู่นะครับ", "bot");
+    if (!aiIntroDone) { aiIntroDone = true; liveReply("เรื่องนี้ขอคิดสักครู่นะครับ ระหว่างรอ ถามเรื่องง่ายๆ หรือบอกรายละเอียดเพิ่มได้เลย", "bot"); }
+    else liveReply("ขอคิดสักครู่นะครับ", "bot");
   }
   let botPrefix = ""; // for a close match: "ถ้าหมายถึง … ก็คือ" before the answer
   function applyBot(r) {
@@ -1655,6 +1667,10 @@ ${contextText(date)}
     clearInterval(aiTestTick); $("aiTest").disabled = false;
     const sec = aiTestAt ? Math.round((Date.now() - aiTestAt) / 1000) : 0;
     const out = $("aiTestStatus");
+    try {
+      const when = new Date().toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      localStorage.setItem(AI_STATUS_KEY, JSON.stringify({ ok: !!res.ok, sec, when, name: aiName(), msg: res.ok ? "" : String(res.error || "").slice(0, 90) }));
+    } catch {}
     if (!res.ok) { out.textContent = `ไม่สำเร็จ (${sec} วินาที): ${res.error || "ไม่ทราบสาเหตุ"}`; return; }
     out.textContent = `ใช้ได้ ตอบใน ${sec} วินาที: "${cleanText(res.text).slice(0, 120)}"` + (sec > 120 ? " · ช้ามาก ลองโมเดลที่เล็กลง" : "");
   }

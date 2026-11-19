@@ -736,3 +736,30 @@ Fixed:
 - Network failures other than "connection refused" and timeout used to surface as "งานไม่ถูกต้อง: …". Now: name not
   found, https/certificate failure and other I/O errors each get a plain message naming the host, with a reminder that
   `.ts.net` addresses work only while the Tailscale app is connected. The 404 message shows the full address tried.
+
+## DRAFT, not built (2026-11-19): next steps, written while the AI quota is nearly used up
+
+Nothing below is built. Pick one at a time when there is quota again.
+
+**First, from the owner's phone (no code needed)**
+1. Custom AI over Tailscale: on v1.0.50 press Settings → "ทดสอบ AI" and read the message. Base URL must end at `/v1`.
+2. Real-phone checks still open: read aloud makes sound with the screen off (B9); wake word after the power button and on the lock screen; the wake-word "ting" is gone; the microphone light on Live; GPS-Tracker arrive/leave reminders reaching N-assistant; GPS-Tracker distance columns.
+
+**Ideas, in the order I would do them**
+1. Fuel reminder from distance (GPS-Tracker now records the day's distance): "remind me to refuel every N km", counted
+   from the last refuel the owner reports ("เติมน้ำมันแล้ว"). Needs: running total across days in GPS-Tracker, a
+   broadcast to N-assistant when the total passes N, a reminder text. Small.
+2. GPS-Tracker: the same "ย้อนกลับไปเวอร์ชันเก่า" button N-assistant has (list releases, back up, uninstall flow).
+3. Use less AI quota in the app: show how many AI calls were answered by the bot / knowledge base / memory / FAQ and how many went to the AI; widen the FAQ.
+4. Mic light colour from pitch only works where the phone hands over raw sound; if it matters, measure the pitch ourselves from the microphone (needs a second audio reader beside the recognizer; check first that Android allows it).
+5. Clean-up: today's GPS-Tracker CSV keeps its old header over the new distance columns; a header rewrite at midnight would fix it.
+
+## 2026-11-19: wording while the AI thinks
+
+- The bot's line while the AI works is now "ขอคิดสักครู่นะครับ" (was "ขอส่งให้เอไอคิดสักครู่นะครับ"); the first-time line starts "เรื่องนี้ขอคิดสักครู่นะครับ ระหว่างรอ …".
+
+## 2026-11-19: AI status in the menu
+
+- The ☰ menu now opens with "AI: <name>" and the last "ทดสอบ AI" result (ok + seconds, or the error), with the time.
+  The result is kept on the phone (`nassistant.aiStatus`), so it is still there after a restart. If the AI setting was
+  changed after the test, the menu says the test was made with the earlier setting.
