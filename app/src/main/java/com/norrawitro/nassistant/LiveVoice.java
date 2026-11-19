@@ -75,6 +75,10 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         try { if (rec != null) rec.cancel(); } catch (Exception ignored) {}
     }
 
+    /** Sound above this level (dB, as the recognizer reports it) means the room is not quiet. Tune on the phone. */
+    private static final float SOUND_DB = 1.5f;
+    private long lastSoundAt;
+
     private void onQuiet() {
         quietArmed = false;
         if (!on) return;
@@ -92,7 +96,12 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
             if (pendingSay != null) { restartQuiet(); listen(); } // an earlier answer still waits for silence
             return;
         }
-        if (pendingSay != null) speakPending();
+        if (pendingSay != null) {
+            // Check the surroundings: if there was sound in the last QUIET_MS, wait for it to go still first.
+            long since = System.currentTimeMillis() - lastSoundAt;
+            if (since < QUIET_MS) { main.removeCallbacks(quietDone); quietArmed = true; main.postDelayed(quietDone, QUIET_MS - since); return; }
+            speakPending();
+        }
     }
 
     private void speakPending() {
@@ -300,6 +309,8 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     /** Called by the recognizer about 10-50 times a second with the sound level in dB (about -2 quiet to 10 loud). */
     @Override public void onRmsChanged(float rmsdB) {
         long now = System.currentTimeMillis();
+        // Any sound in the room (a voice, a TV, a car) counts: the phone does not speak until the air has been still.
+        if (rmsdB > SOUND_DB) lastSoundAt = now;
         if (now - lastLevelAt < 80) return;
         lastLevelAt = now;
         float loud = Math.max(0f, Math.min(1f, (rmsdB + 2f) / 12f));
