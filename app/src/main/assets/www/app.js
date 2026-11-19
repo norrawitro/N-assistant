@@ -37,6 +37,17 @@
     save(dayKey(date), t);
   }
   const saveToday = patch => saveDay(todayDate(), patch);
+  /** Every note on every saved day (tasks, updates, things for tomorrow), newest day first: [{date, kind, text}]. */
+  function recentNotes(maxDays = 90) {
+    const out = [];
+    Object.keys(docs).filter(k => k.startsWith("day-")).sort().reverse().slice(0, maxDays).forEach(k => {
+      const d = docs[k] || {}, date = k.slice(4), clean = t => t.replace(/^•\s*/, "");
+      linesOf(d.morning && d.morning.tasks).forEach(t => out.push({ date, kind: "งาน", text: clean(t) }));
+      linesOf(d.evening && d.evening.notes).forEach(t => out.push({ date, kind: "อัปเดต", text: clean(t) }));
+      linesOf(d.evening && d.evening.tomorrow).forEach(t => out.push({ date, kind: "ยกไปพรุ่งนี้", text: clean(t) }));
+    });
+    return out;
+  }
   const daysBefore = (date, n) => Object.keys(docs).filter(k => k.startsWith("day-") && k.slice(4) < date).sort().reverse().slice(0, n).map(k => docs[k]);
 
   // ---------- native events ----------
@@ -753,11 +764,9 @@
       appendToDay(field, text);
       liveReply(`จดลง${FIELD[field][2]}แล้วครับ ${text}`, "bot");
     } else if (r.type === "listNotes") {
-      const t = today(), parts = [];
-      const tasks = linesOf(t.morning.tasks), upd = linesOf(t.evening.notes), tmr = linesOf(t.evening.tomorrow);
-      if (tasks.length) parts.push(`งานวันนี้ ${tasks.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
-      if (upd.length) parts.push(`อัปเดตวันนี้ ${upd.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
-      if (tmr.length) parts.push(`ยกไปพรุ่งนี้ ${tmr.slice(-5).map(x => x.replace(/^•\s*/, "")).join(" ")}`);
+      // Read from every saved day, not only today: the newest notes first, then how many there are in all.
+      const notes = recentNotes(), parts = [];
+      if (notes.length) parts.push(`จดไว้ทั้งหมด ${notes.length} รายการ ล่าสุด ${notes.slice(0, 12).map(n => `${dayName(n.date)} ${n.kind} ${n.text}`).join(" ต่อไป ")}`);
       const rem = reminders().filter(x => x.on !== false && nextAt(x)).sort((a, b) => nextAt(a) - nextAt(b)).slice(0, 2);
       if (rem.length) parts.push(`เตือนที่ใกล้ที่สุด ${rem.map(x => `${reminderWhen(x)} ${x.text}`).join(" และ ")}`);
       liveReply(parts.length ? parts.join(" ต่อไป ") + " ครับ" : "วันนี้ยังไม่ได้จดอะไรไว้ครับ", "bot");
@@ -894,6 +903,7 @@
 ${contextText(todayDate())}
 แผนวันนี้: ${b ? `เป้าหลัก ${b.focus}; งาน ${(b.priorities || []).join("; ")}` : "(ยังไม่ได้ทำ)"}
 การเตือนที่ตั้งไว้: ${rems || "(ไม่มี)"}
+บันทึกที่จดไว้ทุกวัน (ล่าสุดก่อน, ใช้ตอบเมื่อถามว่าจดอะไรไว้): ${recentNotes().slice(0, 60).map(n => `${n.date} ${n.kind}: ${n.text}`).join("; ") || "(ยังไม่มี)"}
 บันทึกวันนี้: งาน ${td.morning.tasks || "-"} | อัปเดต ${td.evening.notes || "-"} | ยกไปพรุ่งนี้ ${td.evening.tomorrow || "-"}
 ${kbText ? `ข้อมูลจากคลังความรู้ของผู้ใช้ (ถ้าตอบได้จากส่วนนี้ ให้ตอบตามนี้และบอกว่ามาจากคลังความรู้):\n${kbText}` : ""}
 

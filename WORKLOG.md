@@ -837,3 +837,11 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Owner's request 2: the AI's job is to answer what the bot cannot, and also to explain how to find the answer and to
   help write scripts that add new abilities. It is not meant to answer every question.
 - Status: planned only; nothing built.
+
+## 2026-11-19: Live answers "what did we note" from every saved day
+
+- Where notes are kept: each day's page (tasks, updates, things for tomorrow) in the app's saved days. The
+  "จดอะไรไว้บ้าง" answer used to read only today's notes, last five each; the AI prompt only had today.
+- Now: Live reads every saved day (newest first), says how many notes there are in all, and then the latest twelve.
+  The AI prompt also gets the notes from every day (newest first, up to 60), so it can answer from them.
+- Tested in a browser with notes on three days: all six notes are listed. Not tested on a real phone yet.
