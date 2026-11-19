@@ -803,3 +803,12 @@ Nothing below is built. Pick one at a time when there is quota again.
   should offer options, questions, or a suggested next step that the owner decides on, rather than a finished answer
   for everything. Which requests this applies to (and how to phrase the AI's prompt) is not decided yet.
 - Status: planned only; nothing built.
+
+## 2026-11-19: Live waits for silence (manners)
+
+- Owner's rule, no exceptions: do not answer or speak over a person who is still talking.
+- The person's words are held until 2 s of silence, then given to the page as one phrase (this replaces the 3 s
+  idea noted earlier).
+- Every answer, including the bot's quick answers, waits for 2 s of silence before the phone speaks it. If the person
+  starts again while waiting, the answer keeps waiting and the new words join the phrase.
+- Not tested on a real phone yet; compiled by CI only.
