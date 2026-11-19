@@ -285,8 +285,9 @@ public class MainActivity extends Activity {
                 @Override public void heard(String text) { emit("liveHeard", JSONObject.quote(text)); }
                 @Override public void spoke(String text) { emit("liveSpoke", JSONObject.quote(text)); }
                 @Override public void partial(String text) { emit("livePartial", JSONObject.quote(text)); }
-                @Override public void level(float loud, float hz) {
-                    emit("liveLevel", String.format(java.util.Locale.US, "{\"loud\":%.2f,\"hz\":%.0f}", loud, hz));
+                @Override public void level(float loud, float hz, float floorDb, float db) {
+                    emit("liveLevel", String.format(java.util.Locale.US,
+                            "{\"loud\":%.2f,\"hz\":%.0f,\"floor\":%.1f,\"db\":%.1f}", loud, hz, floorDb, db));
                 }
             });
         }

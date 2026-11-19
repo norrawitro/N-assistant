@@ -146,6 +146,7 @@
     if (message) $("liveStatus").textContent = message;
     else if (!on) $("liveStatus").textContent = "ปิด Live อยู่";
     if (!on || state !== "listening") { $("livePartial").textContent = ""; $("liveSwitch").classList.remove("hearing"); }
+    if (!on) $("micInfo").textContent = "";
   }
   $("liveSwitch").addEventListener("click", () => {
     if (!A || !A.liveStart) { $("liveStatus").textContent = "Live ใช้ได้ในแอปบนมือถือเท่านั้น"; return; }
@@ -162,6 +163,8 @@
   let micOff = null;
   handlers.liveLevel = l => {
     const sw = $("liveSwitch");
+    // The room's average noise (พื้นเสียง) and the level right now, in dB as the phone reports them.
+    if (l && sw.getAttribute("aria-checked") === "true") $("micInfo").textContent = `พื้นเสียง ${(+l.floor).toFixed(1)} dB · ตอนนี้ ${(+l.db).toFixed(1)} dB`;
     if (!l || sw.getAttribute("aria-checked") !== "true" || sw.dataset.state !== "listening") { sw.classList.remove("hearing"); return; }
     const lv = Math.max(0, Math.min(1, +l.loud || 0)), hz = +l.hz || 0;
     // 80 Hz -> 210 (blue), 400 Hz+ -> 20 (orange), on a log scale like the ear hears it.

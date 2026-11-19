@@ -31,7 +31,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
          * The microphone light: loudness 0..1 and the voice's pitch in Hz (0 when unknown), about 12 times a second
          * while listening.
          */
-        void level(float loud, float hz);
+        void level(float loud, float hz, float floorDb, float db);
     }
 
     private static final Locale THAI = new Locale("th", "TH");
@@ -75,8 +75,12 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         try { if (rec != null) rec.cancel(); } catch (Exception ignored) {}
     }
 
-    /** Sound above this level (dB, as the recognizer reports it) means the room is not quiet. Tune on the phone. */
-    private static final float SOUND_DB = 1.5f;
+    /**
+     * The room's own noise (the "พื้นเสียง"): an average of the quiet moments, in the recognizer's dB. A sound counts
+     * when it is SOUND_MARGIN_DB above that average. Starts from the first reading and keeps adjusting slowly.
+     */
+    private static final float SOUND_MARGIN_DB = 3f;
+    private float noiseFloor = Float.NaN;
     private long lastSoundAt;
 
     private void onQuiet() {
@@ -310,11 +314,13 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     @Override public void onRmsChanged(float rmsdB) {
         long now = System.currentTimeMillis();
         // Any sound in the room (a voice, a TV, a car) counts: the phone does not speak until the air has been still.
-        if (rmsdB > SOUND_DB) lastSoundAt = now;
+        if (Float.isNaN(noiseFloor)) noiseFloor = rmsdB;
+        if (rmsdB > noiseFloor + SOUND_MARGIN_DB) lastSoundAt = now;
+        else noiseFloor = noiseFloor * 0.98f + rmsdB * 0.02f; // quiet moments update the average
         if (now - lastLevelAt < 80) return;
         lastLevelAt = now;
         float loud = Math.max(0f, Math.min(1f, (rmsdB + 2f) / 12f));
-        ev.level(loud, loud < 0.15f ? 0f : hz);
+        ev.level(loud, loud < 0.15f ? 0f : hz, noiseFloor, rmsdB);
     }
 
     /**
