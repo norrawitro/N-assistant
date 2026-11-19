@@ -820,3 +820,12 @@ Nothing below is built. Pick one at a time when there is quota again.
   wait until it goes still.
 - The sound check uses the recognizer's level (`onRmsChanged`) with a threshold of 1.5 dB (SOUND_DB). This is a guess;
   it must be tuned on the owner's phone in a quiet room and a noisy one.
+
+## 2026-11-19: measure the room's noise before the phone speaks
+
+- Owner's request: measure the ambient noise average (พื้นเสียง) so the app can tell quiet from a voice command.
+- Now: the app keeps a slow average of the quiet moments (`noiseFloor`) from the recognizer's dB level. A sound counts
+  when it is 3 dB above that average (SOUND_MARGIN_DB). The phone waits to speak until 2 s pass with no such sound.
+- The Live page shows "พื้นเสียง X dB · ตอนนี้ Y dB" under the status line while Live is on. Use these numbers on the
+  phone to tune SOUND_MARGIN_DB.
+- Not tested on a real phone yet.
