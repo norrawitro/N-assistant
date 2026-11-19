@@ -55,6 +55,52 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     private final Runnable listenTask = this::listen;
     private final Runnable pageTimeout = () -> { if (thinking) { thinking = false; relisten(0); } };
 
+    /**
+     * Turn-taking (manners): nobody answers or speaks over a person who is still talking. The person's words are held
+     * until QUIET_MS of silence; an answer waits for the same silence before the phone speaks it.
+     */
+    private static final long QUIET_MS = 2000;
+    private final StringBuilder held = new StringBuilder(); // what the person said, not yet given to the page
+    private String pendingSay;                              // an answer waiting for silence before it is spoken
+    private boolean quietArmed;
+    private boolean listening;                              // the recognizer is running now
+    private final Runnable quietDone = this::onQuiet;
+
+    private void restartQuiet() { main.removeCallbacks(quietDone); quietArmed = true; main.postDelayed(quietDone, QUIET_MS); }
+    private void cancelQuiet() { main.removeCallbacks(quietDone); quietArmed = false; }
+    /** Recognizer errors while words or an answer are waiting must not cancel the wait, but must not extend it either. */
+    private void armIfIdle() { if (!quietArmed && (held.length() > 0 || pendingSay != null)) restartQuiet(); }
+    private void cancelRec() {
+        listening = false;
+        try { if (rec != null) rec.cancel(); } catch (Exception ignored) {}
+    }
+
+    private void onQuiet() {
+        quietArmed = false;
+        if (!on) return;
+        if (held.length() > 0) {
+            String text = held.toString();
+            held.setLength(0);
+            main.removeCallbacks(listenTask);
+            cancelRec();
+            ev.heard(text);
+            if (echo) { pendingSay = text; speakPending(); return; } // round 1: say back exactly what was heard
+            // The page answers through answer(). Until then the phone waits in thinking.
+            thinking = true;
+            main.removeCallbacks(pageTimeout);
+            main.postDelayed(pageTimeout, 4000);
+            if (pendingSay != null) { restartQuiet(); listen(); } // an earlier answer still waits for silence
+            return;
+        }
+        if (pendingSay != null) speakPending();
+    }
+
+    private void speakPending() {
+        String t = pendingSay;
+        pendingSay = null;
+        if (t != null) say(t);
+    }
+
     LiveVoice(Context ctx, Events ev) {
         this.ctx = ctx.getApplicationContext();
         this.ev = ev;
@@ -71,7 +117,10 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         main.removeCallbacks(pageTimeout);
         String t = text == null ? "" : text.trim();
         if (t.isEmpty()) { if (speaking == 0) relisten(200); return; }
-        say(t);
+        if (speaking > 0) { say(t); return; } // already speaking: queue behind it
+        pendingSay = t;
+        if (held.length() == 0 && !quietArmed) restartQuiet(); // speak once the person has been quiet for QUIET_MS
+        listen(); // keep listening: if the person starts again, the answer keeps waiting
     }
 
     /** Call on the main thread. */
@@ -100,6 +149,10 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         if (!on) return;
         on = false;
         main.removeCallbacksAndMessages(null);
+        held.setLength(0);
+        pendingSay = null;
+        quietArmed = false;
+        listening = false;
         try { rec.cancel(); rec.destroy(); } catch (Exception ignored) {}
         rec = null;
         try { tts.stop(); tts.shutdown(); } catch (Exception ignored) {}
@@ -111,7 +164,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     private void listen() {
-        if (!on || rec == null) return;
+        if (!on || rec == null || listening) return;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "th-TH");
@@ -121,6 +174,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
         try {
             rec.startListening(i);
+            listening = true;
             ev.state("listening", "กำลังฟัง… พูดได้เลย");
         } catch (Exception e) {
             fail("เริ่มฟังไม่ได้: " + e.getMessage());
@@ -139,7 +193,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         // The page may speak at any moment (for example when the AI's answer arrives while the microphone is open):
         // stop listening first so the app does not hear itself, and queue behind anything still being spoken.
         main.removeCallbacks(listenTask);
-        try { if (rec != null) rec.cancel(); } catch (Exception ignored) {}
+        cancelRec();
         ev.state("speaking", "กำลังพูด…");
         String id = "u" + (++utterance);
         int r = tts.speak(text, speaking > 0 ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH, null, id);
@@ -185,33 +239,34 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
 
     @Override
     public void onResults(Bundle results) {
+        listening = false;
         if (!on) return;
         errorsInRow = 0;
         ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         String text = list == null || list.isEmpty() ? "" : list.get(0).trim();
-        if (text.isEmpty()) { relisten(200); return; }
-        ev.heard(text);
-        if (echo) {
-            say(text); // round 1: say back exactly what was heard
-        } else {
-            // The page decides at once what to say (its quick bot, or "one moment" while the AI works) and calls
-            // answer(). If it does not, listen again after a few seconds rather than staying deaf.
-            thinking = true;
-            main.removeCallbacks(pageTimeout);
-            main.postDelayed(pageTimeout, 4000);
-        }
+        if (text.isEmpty()) { armIfIdle(); relisten(200); return; }
+        if (held.length() > 0) held.append(' ');
+        held.append(text);
+        ev.partial(held.toString());
+        restartQuiet(); // the person may go on: answer only after QUIET_MS of silence
+        if (!thinking) listen();
     }
 
     @Override
     public void onPartialResults(Bundle partial) {
         ArrayList<String> list = partial.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        if (list != null && !list.isEmpty() && !list.get(0).trim().isEmpty()) ev.partial(list.get(0).trim());
+        if (list != null && !list.isEmpty() && !list.get(0).trim().isEmpty()) {
+            cancelQuiet(); // still talking
+            ev.partial((held.length() > 0 ? held + " " : "") + list.get(0).trim());
+        }
     }
 
     @Override
     public void onError(int error) {
+        listening = false;
         if (!on) return;
         if (speaking > 0) return; // listening was cancelled on purpose so the app can speak
+        armIfIdle();
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
@@ -237,7 +292,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     @Override public void onReadyForSpeech(Bundle params) {}
-    @Override public void onBeginningOfSpeech() {}
+    @Override public void onBeginningOfSpeech() { cancelQuiet(); }
     // ---------- microphone light ----------
     private long lastLevelAt;
     private float hz;

@@ -763,3 +763,52 @@ Nothing below is built. Pick one at a time when there is quota again.
 - The ☰ menu now opens with "AI: <name>" and the last "ทดสอบ AI" result (ok + seconds, or the error), with the time.
   The result is kept on the phone (`nassistant.aiStatus`), so it is still there after a restart. If the AI setting was
   changed after the test, the menu says the test was made with the earlier setting.
+
+## Noted, not built (2026-11-19): wait for silence before Live answers
+
+- Owner's request: before Live answers, stay quiet for more than 3 seconds so we are sure the speaker has finished.
+- Idea: hold the recognized text in LiveVoice and answer only after 3 s with no new speech; new words are added to the
+  same phrase. Stop listening before answering. Recognizer errors while holding re-arm the 3 s timer.
+- Status: the code change was made and then reverted at the owner's request ("แค่จดก็พอ"). Nothing is built or released.
+
+## 2026-11-19: custom AI connected on the owner's phone
+
+- The AI that now answers is the owner's own server at `wkw` (the Tailscale address `wkw.tail85b885.ts.net`), used
+  through "ผู้ให้บริการอื่น" with a base URL ending at `/v1`. It works while the Tailscale app on the phone is connected.
+- Not yet recorded: the model name and the reply time. The owner can read them from ตั้งค่า → ทดสอบ AI, or from ☰ menu.
+
+## Noted, not built (2026-11-19): a how-to for the wkw AI
+
+- Owner's request: know how to use every function of wkw. Nothing about wkw's functions is in the repo; the app only
+  sends chat messages to its `/v1/chat/completions` and reads the reply text.
+- Needed from the owner: wkw's documentation, or the output of its `/v1/models` list (from a phone or PC with Tailscale on).
+- Then: write a how-to for wkw (in the app's help and here), covering only what wkw actually offers.
+- Status: noted only. Nothing built.
+
+## Noted, not built (2026-11-19): check that the person has finished before Live replies
+
+- Owner's request, same idea as the 3-second quiet wait above: before Live answers, check that no person is still
+  speaking (not only a quiet gap). Not built; the owner has not asked for a build yet.
+
+## Plan (not built, 2026-11-19): N-assistant must be able to use wkw
+
+- Owner's request: the N-assistant AI must be able to use wkw (the owner's Tailscale server). Today it can, when the
+  Tailscale app is connected. Plan item: check on the owner's phone that Live and typed chat reach wkw, using a question
+  the bot cannot answer, and record the result here.
+- Status: planned only; nothing built.
+
+## Plan (not built, 2026-11-19): AI helps think, not thinks for everything
+
+- Owner's direction: the AI should help the owner think, not do all the thinking. Plan item: when the AI is used, it
+  should offer options, questions, or a suggested next step that the owner decides on, rather than a finished answer
+  for everything. Which requests this applies to (and how to phrase the AI's prompt) is not decided yet.
+- Status: planned only; nothing built.
+
+## 2026-11-19: Live waits for silence (manners)
+
+- Owner's rule, no exceptions: do not answer or speak over a person who is still talking.
+- The person's words are held until 2 s of silence, then given to the page as one phrase (this replaces the 3 s
+  idea noted earlier).
+- Every answer, including the bot's quick answers, waits for 2 s of silence before the phone speaks it. If the person
+  starts again while waiting, the answer keeps waiting and the new words join the phrase.
+- Not tested on a real phone yet; compiled by CI only.
