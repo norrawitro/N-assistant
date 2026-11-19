@@ -757,3 +757,9 @@ Nothing below is built. Pick one at a time when there is quota again.
 ## 2026-11-19: wording while the AI thinks
 
 - The bot's line while the AI works is now "ขอคิดสักครู่นะครับ" (was "ขอส่งให้เอไอคิดสักครู่นะครับ"); the first-time line starts "เรื่องนี้ขอคิดสักครู่นะครับ ระหว่างรอ …".
+
+## 2026-11-19: AI status in the menu
+
+- The ☰ menu now opens with "AI: <name>" and the last "ทดสอบ AI" result (ok + seconds, or the error), with the time.
+  The result is kept on the phone (`nassistant.aiStatus`), so it is still there after a restart. If the AI setting was
+  changed after the test, the menu says the test was made with the earlier setting.
