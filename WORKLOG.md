@@ -796,3 +796,10 @@ Nothing below is built. Pick one at a time when there is quota again.
   Tailscale app is connected. Plan item: check on the owner's phone that Live and typed chat reach wkw, using a question
   the bot cannot answer, and record the result here.
 - Status: planned only; nothing built.
+
+## Plan (not built, 2026-11-19): AI helps think, not thinks for everything
+
+- Owner's direction: the AI should help the owner think, not do all the thinking. Plan item: when the AI is used, it
+  should offer options, questions, or a suggested next step that the owner decides on, rather than a finished answer
+  for everything. Which requests this applies to (and how to phrase the AI's prompt) is not decided yet.
+- Status: planned only; nothing built.
