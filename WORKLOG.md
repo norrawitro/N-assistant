@@ -829,3 +829,11 @@ Nothing below is built. Pick one at a time when there is quota again.
 - The Live page shows "พื้นเสียง X dB · ตอนนี้ Y dB" under the status line while Live is on. Use these numbers on the
   phone to tune SOUND_MARGIN_DB.
 - Not tested on a real phone yet.
+
+## Plan (not built, 2026-11-19): the app answers "what did we note" from the file, and the AI explains and writes scripts
+
+- Owner's request 1: asking the app which items were noted must read the notes file and list every item, not only the
+  last one. The app must know where the notes file is and read it to answer.
+- Owner's request 2: the AI's job is to answer what the bot cannot, and also to explain how to find the answer and to
+  help write scripts that add new abilities. It is not meant to answer every question.
+- Status: planned only; nothing built.
