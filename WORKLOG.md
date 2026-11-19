@@ -789,3 +789,10 @@ Nothing below is built. Pick one at a time when there is quota again.
 
 - Owner's request, same idea as the 3-second quiet wait above: before Live answers, check that no person is still
   speaking (not only a quiet gap). Not built; the owner has not asked for a build yet.
+
+## Plan (not built, 2026-11-19): N-assistant must be able to use wkw
+
+- Owner's request: the N-assistant AI must be able to use wkw (the owner's Tailscale server). Today it can, when the
+  Tailscale app is connected. Plan item: check on the owner's phone that Live and typed chat reach wkw, using a question
+  the bot cannot answer, and record the result here.
+- Status: planned only; nothing built.
