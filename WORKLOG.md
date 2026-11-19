@@ -776,3 +776,11 @@ Nothing below is built. Pick one at a time when there is quota again.
 - The AI that now answers is the owner's own server at `wkw` (the Tailscale address `wkw.tail85b885.ts.net`), used
   through "ผู้ให้บริการอื่น" with a base URL ending at `/v1`. It works while the Tailscale app on the phone is connected.
 - Not yet recorded: the model name and the reply time. The owner can read them from ตั้งค่า → ทดสอบ AI, or from ☰ menu.
+
+## Noted, not built (2026-11-19): a how-to for the wkw AI
+
+- Owner's request: know how to use every function of wkw. Nothing about wkw's functions is in the repo; the app only
+  sends chat messages to its `/v1/chat/completions` and reads the reply text.
+- Needed from the owner: wkw's documentation, or the output of its `/v1/models` list (from a phone or PC with Tailscale on).
+- Then: write a how-to for wkw (in the app's help and here), covering only what wkw actually offers.
+- Status: noted only. Nothing built.
