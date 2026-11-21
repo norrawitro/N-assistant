@@ -948,3 +948,11 @@ Nothing below is built. Pick one at a time when there is quota again.
   "ชื่อ|https://…{q}…"). A source answers only when its title matches the question's words; otherwise the next one is
   tried. If none fits, the AI is asked alone. The web lookup never calls the AI, so it works when the AI server is down.
 - Not tested on a real phone yet.
+
+## 2026-11-21: Live reads text itself (no hand-off to the read-aloud service)
+
+- With Live on, ▶ / 📋 วางและเล่น / "อ่านคลิปบอร์ด" are read by Live's own speaker (`LiveVoice.readAll`), with the
+  sentence highlight in the Live text box. Live stays on; the microphone waits until the reading ends, then listens again.
+  ■ หยุด stops Live's reading (`stopReading`).
+- With Live off, the read-aloud service still reads as before (background, screen off).
+- Tested in a browser with a mocked bridge: Live stays on and the Live reader is called. Not tested on a real phone yet.

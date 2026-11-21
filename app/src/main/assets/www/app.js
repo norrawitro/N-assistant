@@ -416,14 +416,20 @@
     from = Math.max(0, Math.min(from, readSentences.length - 1));
     saveRead();
     if (!A || !A.readStart) { setReadUi(false, "อ่านออกเสียงใช้ได้ในแอปบนมือถือเท่านั้น"); markSentence(from); return; }
-    if (liveOn()) { if (A.liveStop) A.liveStop(); setLive(false, "off", "ปิด Live แล้ว (กำลังอ่านออกเสียง)"); }
+    // With Live on, Live itself reads the text (it keeps listening afterwards); otherwise the read-aloud service does.
+    if (liveOn() && A.liveReadStart) {
+      $("readFix").hidden = true;
+      A.liveReadStart(JSON.stringify(readSentences), from, readRate);
+      markSentence(from); setReadUi(true, `ไลฟ์กำลังอ่าน ความเร็ว x${readRate}`);
+      return;
+    }
     $("readFix").hidden = true;
     A.readStart(JSON.stringify(readSentences), from, readRate);
     markSentence(from); setReadUi(true, `กำลังเตรียมเสียง… ความเร็ว x${readRate}`);
   }
   /** Stop at once: the highlight goes, the place is kept so "เล่น" carries on from that sentence. */
   function clearHighlight() { $("reader").querySelectorAll("span.now").forEach(sp => sp.className = ""); }
-  function stopReading() { if (A && A.readStop) A.readStop(); clearHighlight(); setReadUi(false, "หยุดแล้ว กดเล่นเพื่ออ่านต่อ หรือแตะประโยคไหนเพื่ออ่านจากตรงนั้น"); }
+  function stopReading() { if (liveOn() && A && A.liveReadStop) A.liveReadStop(); else if (A && A.readStop) A.readStop(); clearHighlight(); setReadUi(false, "หยุดแล้ว กดเล่นเพื่ออ่านต่อ หรือแตะประโยคไหนเพื่ออ่านจากตรงนั้น"); }
   let readVoice = "";
   handlers.read = e => {
     if (!e) return;
