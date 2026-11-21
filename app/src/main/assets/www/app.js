@@ -216,14 +216,23 @@
     const q = wikiWait.q; wikiWait = null;
     askLiveAI(q);
   }
+  // Wikipedia is a source for the AI, not an answer of its own: the AI reads the article and decides whether it fits
+  // the question. An article is used only when its title really matches the question's words.
+  function wikiRelevant(q, title) {
+    const grams = x => { const t = NKb.cleanQuery(x).replace(/\s+/g, ""), out = new Set(); for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2)); return out; };
+    const a = grams(q), b = grams(title);
+    if (!a.size || !b.size) return false;
+    let inA = 0, inB = 0;
+    a.forEach(x => { if (b.has(x)) inA++; });
+    b.forEach(x => { if (a.has(x)) inB++; });
+    return inA / a.size >= 0.6 || inB / b.size >= 0.6;
+  }
   handlers.wiki = r => {
     if (!r || !wikiWait || r.id !== wikiWait.id) return;
     clearTimeout(wikiWait.timer);
     const q = wikiWait.q; wikiWait = null;
-    if (!r.extract) { askLiveAI(q); return; }
-    const answer = `จากวิกิพีเดีย เรื่อง${r.title} ${NKb.excerpt(r.extract, 260)}`;
-    remember(q, answer); // asked again later, the same answer comes from memory
-    liveReply(answer, "bot");
+    const useful = r.extract && wikiRelevant(q, r.title || "");
+    askLiveAI(q, useful ? `${r.title}: ${NKb.excerpt(r.extract, 600)}` : "");
   };
   // A copy made while Live is on (and the app is on screen) is read once, automatically.
   let lastCopied = "";
@@ -844,7 +853,8 @@
     const basic = faqFind(t);
     if (basic) { liveReply(basic.a, "bot"); return; }
     // Wikipedia before the AI: a found article answers now; otherwise the AI is asked.
-    if (!liveJob && A && A.wikiSearch) { startWiki(t); return; }
+    // Questions about the app, the bot or the AI itself are not looked up on Wikipedia.
+    if (!liveJob && A && A.wikiSearch && !NO_WIKI.test(t)) { startWiki(t); return; }
     if (liveJob) {
       liveQueue.push(t);
       liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
@@ -998,7 +1008,9 @@
       open: { type: "string", enum: ["", "morning", "evening", "chat", "remind", "history", "settings"] }
     }
   });
-  function livePrompt(text) {
+  /** Questions that are about this app, the bot or the AI itself: never looked up on Wikipedia. */
+  const NO_WIKI = /บอท|เอไอ|\bAI\b|แอป|คำตอบ|ความจำ|คลังความรู้|ระบบ|ฉัน|ผม|คุณ|ล่าสุด/i;
+  function livePrompt(text, wikiCtx = "") {
     const now = new Date();
     // Only the person and the AI; the quick bot's instant answers and notes are left out to keep the prompt short.
     let past = convo.filter(m => m.who === "me" || m.who === "app");
@@ -1021,7 +1033,7 @@ ${kbText ? `ข้อมูลจากคลังความรู้ขอ�
 บทสนทนาก่อนหน้า:
 ${history || "(เริ่มบทสนทนาใหม่)"}
 
-ผู้ใช้พูดว่า: ${text}
+${wikiCtx ? `ข้อมูลจากวิกิพีเดียที่ค้นได้ (ใช้ประกอบเฉพาะเมื่อตรงกับคำถาม ถ้าไม่ตรงให้ตอบจากความรู้ของคุณเอง ห้ามอ้างวิกิพีเดียถ้าไม่ได้ใช้):\n${wikiCtx}\n` : ""}ผู้ใช้พูดว่า: ${text}
 
 ตัดสินใจว่าจะตอบสนองอย่างไร แล้วตอบเป็น JSON เท่านั้น:
 - reply = สิ่งที่จะพูดออกเสียงให้ผู้ใช้ฟัง ภาษาไทย สั้น 1-3 ประโยค เป็นภาษาพูด ห้ามมี markdown, emoji, รายการหัวข้อ หรือสัญลักษณ์
@@ -1029,11 +1041,11 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
 - open = หน้าที่จะเปิดให้ผู้ใช้ เฉพาะเมื่อผู้ใช้ขอให้เปิด: "morning" (แผนตอนเช้า), "evening" (บันทึกตอนเย็น), "chat" (แชทผู้ช่วย), "remind" (รายการเตือน), "history" (ประวัติ), "settings" (ตั้งค่า) ไม่อย่างนั้นให้เป็น ""`;
   }
   /** Sends what was said to the AI. Returns false (after saying why) when the AI cannot be used. */
-  function askLiveAI(text) {
+  function askLiveAI(text, wikiCtx = "") {
     setLight("ai-think");
     stopThinking();
     let job;
-    try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
+    try { job = buildJob("live", "live", livePrompt(text, wikiCtx), { schema: liveSchema(), effort: "low", userText: text }); }
     catch (e) { liveReply("ยังใช้ AI ไม่ได้ " + e.message.replace(/"/g, ""), "note"); return false; }
     liveJob = { id: job.id, at: Date.now(), q: text };
     askedPut(job.id, { q: text, at: Date.now() });

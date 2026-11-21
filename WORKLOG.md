@@ -924,3 +924,12 @@ Nothing below is built. Pick one at a time when there is quota again.
 - The bot's own steps flash for a short time; while the AI works, the light stays on "AI กำลังคิด" until the answer arrives,
   then shows "AI กำลังตอบ" for a few seconds.
 - Not tested on a real phone yet.
+
+## 2026-11-21: Wikipedia is a source for the AI, not an answer on its own
+
+- Order now: the app's own data first (bot rules, knowledge base, memory, FAQ). If none answers, Wikipedia is searched
+  and the AI is asked. An article is passed to the AI only when its title matches the question's words (bigram share ≥ 0.6);
+  the AI decides how to use it, and is told not to cite Wikipedia when it is not used.
+- Questions about the app, the bot or the AI itself (NO_WIKI: บอท, เอไอ, AI, แอป, คำตอบ, ความจำ, ระบบ, ฉัน, ผม, คุณ,
+  ล่าสุด) skip Wikipedia. Wikipedia no longer gives its own "จากวิกิพีเดีย" answer.
+- Known gap: an article with a different title, such as "ตากสินมหาราช" for "พระเจ้าตากสิน", is not used; the AI answers alone.
