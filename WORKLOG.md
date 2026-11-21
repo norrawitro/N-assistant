@@ -855,3 +855,12 @@ Nothing below is built. Pick one at a time when there is quota again.
   counts as sound). The recognizer's events no longer restart the wait. The average follows the room, so steady
   noise is ignored. The Live page shows the average and the current level (พื้นเสียง / ตอนนี้) to tune by.
 - Not tested on a real phone yet.
+
+## 2026-11-21: automatic read-aloud of what was copied
+
+- New switch on the read-aloud page: "อ่านที่คัดลอกอัตโนมัติ". When on, the read-aloud service listens for copies and
+  reads each new copied text once (the same text is not read twice in a row), at the speed the page is using.
+- The service stays on in the background while the switch is on (its notification says it is waiting).
+- Limit: Android 10 and later can refuse background apps to read the clipboard. If the copy is not read while the
+  app is closed, keep N-assistant open (it works reliably then). Test on the phone to see which case applies.
+- Not tested on a real phone yet; compiled by CI only.

@@ -5,8 +5,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.os.Build;
@@ -68,6 +71,74 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
         c.startService(new Intent(c, ReadAloudService.class).setAction(ACTION_STOP));
     }
 
+    // ---------- automatic: read what was copied, once per copy ----------
+
+    static final String ACTION_AUTO = "auto";
+    static final String ACTION_AUTO_OFF = "autoOff";
+    private static final String PREF = "read_aloud";
+    /** True while the service is listening for copies. */
+    static volatile boolean autoWatching;
+    private ClipboardManager.OnPrimaryClipChangedListener clipListener;
+    private String lastAuto = "";
+
+    static boolean autoOn(Context c) { return c.getSharedPreferences(PREF, MODE_PRIVATE).getBoolean("auto", false); }
+
+    /** The page turns the switch on or off. The rate is the one the page is using. */
+    static void setAuto(Context c, boolean on, float rate) {
+        c.getSharedPreferences(PREF, MODE_PRIVATE).edit().putBoolean("auto", on).putFloat("autoRate", rate).apply();
+        Intent i = new Intent(c, ReadAloudService.class).setAction(on ? ACTION_AUTO : ACTION_AUTO_OFF);
+        if (on && Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
+        else c.startService(i);
+    }
+
+    private void watchClipboard() {
+        autoWatching = true;
+        if (clipListener != null) return;
+        ClipboardManager cm = getSystemService(ClipboardManager.class);
+        clipListener = new ClipboardManager.OnPrimaryClipChangedListener() {
+            @Override public void onPrimaryClipChanged() { main.post(ReadAloudService.this::onCopied); }
+        };
+        try { cm.addPrimaryClipChangedListener(clipListener); } catch (Exception ignored) {}
+    }
+
+    private void unwatchClipboard() {
+        autoWatching = false;
+        if (clipListener == null) return;
+        try { getSystemService(ClipboardManager.class).removePrimaryClipChangedListener(clipListener); } catch (Exception ignored) {}
+        clipListener = null;
+    }
+
+    /** A new copy: read it once, unless it is the same text as the last one read. */
+    private void onCopied() {
+        if (!autoWatching) return;
+        String text = "";
+        try {
+            ClipData cd = getSystemService(ClipboardManager.class).getPrimaryClip();
+            if (cd != null && cd.getItemCount() > 0) {
+                CharSequence cs = cd.getItemAt(0).coerceToText(this);
+                if (cs != null) text = cs.toString().trim();
+            }
+        } catch (Exception ignored) {} // Android may refuse clipboard reads from the background
+        if (text.isEmpty() || text.equals(lastAuto)) return;
+        lastAuto = text;
+        JSONArray arr = new JSONArray();
+        for (String s : splitForSpeech(text)) arr.put(s);
+        float rate = getSharedPreferences(PREF, MODE_PRIVATE).getFloat("autoRate", 2f);
+        start(this, arr, 0, rate);
+    }
+
+    /** Sentences for the speech engine: line breaks and sentence ends. */
+    static List<String> splitForSpeech(String text) {
+        List<String> out = new ArrayList<>();
+        for (String block : text.replace("\r", "").split("\n+")) {
+            for (String part : block.split("(?<=[.!?。…])\\s+")) {
+                String t = part.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+        }
+        return out;
+    }
+
     // ---------- service ----------
 
     @Override
@@ -75,6 +146,16 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
         String action = intent == null ? ACTION_STOP : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             finish("stopped");
+            return START_NOT_STICKY;
+        }
+        if (ACTION_AUTO.equals(action)) {
+            startAsForeground();
+            watchClipboard();
+            return START_STICKY;
+        }
+        if (ACTION_AUTO_OFF.equals(action)) {
+            unwatchClipboard();
+            if (!playing && index < 0) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); }
             return START_NOT_STICKY;
         }
         startAsForeground();
@@ -191,12 +272,14 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
         ready = false;
         releaseWake();
         if (was && !"quiet".equals(state)) emit(state, at, null); // "quiet": the reason was already sent
+        if (autoWatching) { updateNotification(); return; } // still waiting for the next copy: keep the service
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
 
     @Override
     public void onDestroy() {
+        unwatchClipboard();
         if (tts != null) { try { tts.shutdown(); } catch (Exception ignored) {} tts = null; }
         playing = false;
         releaseWake();
@@ -239,7 +322,8 @@ public class ReadAloudService extends Service implements TextToSpeech.OnInitList
         PendingIntent stop = PendingIntent.getService(this, 61,
                 new Intent(this, ReadAloudService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        String text = total > 0 && index >= 0 ? "ประโยคที่ " + (index + 1) + " จาก " + total + " · ความเร็ว x" + trim(rate) : "กำลังเตรียมเสียง…";
+        String text = total > 0 && index >= 0 ? "ประโยคที่ " + (index + 1) + " จาก " + total + " · ความเร็ว x" + trim(rate)
+                : autoWatching ? "คอยอ่านข้อความที่คัดลอกให้อัตโนมัติ" : "กำลังเตรียมเสียง…";
         return new Notification.Builder(this, CH)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle("กำลังอ่านออกเสียง")
