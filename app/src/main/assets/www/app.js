@@ -85,16 +85,15 @@
   const TABS = ["read", "kb", "live", "morning", "evening", "chat", "remind", "history", "settings"];
   const TAB_TITLE = { read: "อ่านออกเสียง", kb: "คลังความรู้", live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
+    if (name === "read") name = "live"; // read-aloud now lives on the Live page
     if (!TABS.includes(name)) name = "live";
     $("viewTitle").textContent = name === "live" ? "Live" : `‹ ${TAB_TITLE[name]}`;
     currentTab = name;
     document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
     if (name === "live") renderConvo();
-    $("readBar").hidden = name !== "read";
-    document.body.classList.toggle("reading", name === "read");
-    if (name === "read") { setReadMode(readSentences.length > 0); requestAnimationFrame(sizeReadBox); syncRead(); }
+    if (name === "live") { requestAnimationFrame(sizeReadBox); syncRead(); }
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-    TABS.forEach(t => $("p-" + t).hidden = t !== name);
+    TABS.forEach(t => { const el = $("p-" + t); if (el) el.hidden = t !== name; }); // "read" has no page of its own now
     if (name === "evening") renderChecks();
     if (name === "remind") { renderReminders(); readWhere(); renderPlaceRules(); }
     if (name === "chat") { renderChat(); setTimeout(() => $("chatLog").lastElementChild?.scrollIntoView({ block: "end" }), 50); }
@@ -232,6 +231,8 @@
     if (!text || text === lastCopied || !liveOn()) return;
     lastCopied = text;
     addConvo("note", `คัดลอกใหม่ ${text.length.toLocaleString("th-TH")} ตัวอักษร · อ่านให้ฟัง`);
+    // Shown in the Live page's text box (with ▶ / speed buttons there) and spoken by Live.
+    $("readText").value = text; readSentences = []; readAt = -1; renderReader(); setReadMode(false); saveRead();
     if (A && A.liveSay) A.liveSay(text);
   };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
@@ -345,9 +346,8 @@
   /** The box fills the screen below the controls; the line being read stays at one height (ANCHOR) in it. */
   const ANCHOR = 0.3;
   function sizeReadBox() {
-    if ($("p-read").hidden) return;
-    const box = $("readBox"), top = box.getBoundingClientRect().top;
-    box.style.height = Math.max(100, Math.floor(window.innerHeight - Math.max(top, 0) - 12)) + "px";
+    if ($("p-live").hidden) return;
+    const box = $("readBox");
     // Space above the first and below the last sentence, so every sentence can sit at the anchor line.
     const r = $("reader"), h = box.clientHeight;
     r.style.paddingTop = Math.round(h * ANCHOR) + "px";
@@ -379,6 +379,7 @@
   }
   function setReadUi(playing, msg) {
     readPlaying = playing;
+    document.body.classList.toggle("reading", playing); // hides the clock while reading
     $("readPlay").textContent = playing ? "■ หยุด" : "▶ เล่น";
     $("readPlay").classList.toggle("primary", playing);
     if (msg !== undefined) $("readStatus").textContent = msg;
@@ -856,7 +857,6 @@
       if (!txt || !txt.trim()) { liveReply("คลิปบอร์ดว่างอยู่ครับ คัดลอกข้อความมาก่อนแล้วสั่งใหม่", "bot"); return; }
       addConvo("bot", `อ่านข้อความที่คัดลอกไว้ให้ฟังครับ (${txt.trim().length.toLocaleString("th-TH")} ตัวอักษร) หยุดได้ที่หน้าอ่านออกเสียงหรือแจ้งเตือน`);
       $("readText").value = txt;
-      showTab("read");
       startReading(0); // turns Live off: one voice at a time
     } else if (r.type === "whereNow") {
       readWhere(); liveReply(whereText(), "bot");
@@ -1665,6 +1665,45 @@ ${contextText(date)}
     $("sStatus").textContent = "สร้างกุญแจแล้ว จดไว้ให้ AI ฝั่งที่ตอบ แล้วกด \"บันทึกการตั้งค่า\"";
   });
   $("mdShowKey").addEventListener("click", () => { const show = $("sMdKey").type === "password"; $("sMdKey").type = show ? "text" : "password"; $("mdShowKey").textContent = show ? "ซ่อนกุญแจ" : "แสดงกุญแจ"; });
+  // ---------- saved AI providers: URL, key and model kept on this phone, so changing the model needs no re-typing ----------
+  const LS_PROFILES = "nassistant.aiProfiles"; // not in the data file: it holds keys
+  function profiles() { try { const a = JSON.parse(localStorage.getItem(LS_PROFILES) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+  function saveProfiles(list) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(list)); } catch {} renderProfiles(); }
+  function renderProfiles() {
+    const sel = $("sProfile"), list = profiles(), keep = sel.value;
+    sel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = list.length ? "เลือกผู้ให้บริการที่บันทึกไว้…" : "ยังไม่มีผู้ให้บริการที่บันทึกไว้";
+    sel.appendChild(none);
+    list.forEach(p => { const o = document.createElement("option"); o.value = p.id; o.textContent = `${p.name} · ${p.model || "ยังไม่ระบุโมเดล"}`; sel.appendChild(o); });
+    if (list.some(p => p.id === keep)) sel.value = keep;
+  }
+  $("profileUse").addEventListener("click", () => {
+    const p = profiles().find(x => x.id === $("sProfile").value);
+    if (!p) { $("sStatus").textContent = "เลือกผู้ให้บริการในรายการก่อน"; return; }
+    const url = String(p.url || "").replace(/\/+$/, "");
+    $("sOtherUrl").value = url; $("sOtherKey").value = p.key || ""; $("sOtherModel").value = p.model || "";
+    $("sOtherPreset").value = [...$("sOtherPreset").options].some(o => o.value === url) ? url : "";
+    $("sProvider").value = "openai"; showProviderBox();
+    $("sStatus").textContent = `เลือก ${p.name} แล้ว กดบันทึกการตั้งค่าเพื่อใช้ตัวนี้`;
+  });
+  $("profileAdd").addEventListener("click", () => {
+    const url = $("sOtherUrl").value.trim().replace(/\/+$/, ""), key = $("sOtherKey").value.trim(), model = $("sOtherModel").value.trim();
+    if (!/^https:\/\//.test(url)) { $("sStatus").textContent = "ใส่ที่อยู่ API ที่ขึ้นต้นด้วย https:// ก่อนบันทึก"; return; }
+    let name = $("profileName").value.trim();
+    if (!name) { try { name = new URL(url).host; } catch { name = "ผู้ให้บริการ"; } }
+    const list = profiles(), same = list.find(p => p.url === url && p.model === model);
+    const item = { id: same ? same.id : uid(), name, url, key, model };
+    saveProfiles(same ? list.map(p => p.id === same.id ? item : p) : [...list, item]);
+    $("profileName").value = ""; $("sProfile").value = item.id;
+    $("sStatus").textContent = `บันทึก ${name} แล้ว`;
+  });
+  $("profileDel").addEventListener("click", () => {
+    const id = $("sProfile").value;
+    if (!id) { $("sStatus").textContent = "เลือกผู้ให้บริการที่จะลบก่อน"; return; }
+    saveProfiles(profiles().filter(p => p.id !== id));
+    $("sStatus").textContent = "ลบแล้ว";
+  });
   $("sOtherPreset").addEventListener("change", () => { const v = $("sOtherPreset").value; if (v) $("sOtherUrl").value = v; $("sOtherUrl").focus(); });
 
   // ---------- Termux: let the app start "ollama serve" by itself ----------
@@ -1809,7 +1848,7 @@ ${contextText(date)}
     ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
-    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey());
+    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey()); renderProfiles();
     set("sMdRepo", s.mdRepo); set("sMdPath", s.mdPath || "chat/n-assistant.md"); set("sMdToken", lsStr(LS_MD_TOKEN)); set("sMdKey", lsStr(LS_MD_KEY));
     { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);

@@ -882,3 +882,18 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Not tested on a real phone. Whether Android gives the reinstalled app back the file it wrote earlier must be checked
   on the phone; if not, the file can still be imported with the existing import (ประวัติ → นำเข้าไฟล์ JSON).
 - API keys are not in that file (they are stored separately on the phone).
+
+## 2026-11-21: read-aloud is part of the Live page
+
+- The read-aloud controls (▶ เล่น, ■ หยุด, แก้ไข, ล้าง, วางและเล่น, ความเร็ว x1–x3, อ่านที่คัดลอกอัตโนมัติ) and the text box
+  now sit in a card on the Live page. The separate read-aloud page is gone; the menu item opens Live.
+- A copy made while Live is on shows in that text box and is spoken by Live. A spoken "อ่านคลิปบอร์ด" also fills the box.
+- Live is turned off while the read-aloud service plays (one voice at a time), as before.
+- Not tested on a real phone yet.
+
+## 2026-11-21: saved AI providers in Settings
+
+- Settings → ผู้ให้บริการ (OpenAI-style): a list of saved providers. "บันทึกผู้ให้บริการนี้" keeps the URL, API key and
+  model; "ใช้ตัวนี้" fills the fields from a saved one, so changing the model needs no re-typing; "ลบตัวนี้" removes one.
+- Kept in the phone's local storage (not in the data file), because it holds keys.
+- Tested in a browser: two models saved under one URL, one picked again with its URL and key filled in.
