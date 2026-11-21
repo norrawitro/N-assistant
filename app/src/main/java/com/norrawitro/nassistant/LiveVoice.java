@@ -126,6 +126,42 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     private float rate = 1f;
     void setRate(float r) { rate = r; }
 
+    /**
+     * The short tone the phone's recognizer plays each time it starts listening. Off by default: it is muted for a
+     * moment around each start (the same way the wake word does it), unless the owner turns the tone on in Settings.
+     */
+    private boolean toneOn = false;
+    private final boolean[] muted = new boolean[3];
+    private static final int[] TONE_STREAMS = {android.media.AudioManager.STREAM_MUSIC,
+            android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.STREAM_SYSTEM};
+    private final Runnable unmuteTask = this::unmuteTone;
+
+    void setTone(boolean on) { toneOn = on; if (!on) unmuteTone(); }
+
+    private void muteTone() {
+        android.media.AudioManager am = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return;
+        main.removeCallbacks(unmuteTask);
+        for (int k = 0; k < TONE_STREAMS.length; k++) {
+            try {
+                if (!muted[k] && !am.isStreamMute(TONE_STREAMS[k])) {
+                    am.adjustStreamVolume(TONE_STREAMS[k], android.media.AudioManager.ADJUST_MUTE, 0);
+                    muted[k] = true;
+                }
+            } catch (Exception ignored) {}
+        }
+        main.postDelayed(unmuteTask, 900);
+    }
+
+    private void unmuteTone() {
+        android.media.AudioManager am = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        for (int k = 0; k < TONE_STREAMS.length; k++) {
+            if (!muted[k]) continue;
+            muted[k] = false;
+            try { if (am != null) am.adjustStreamVolume(TONE_STREAMS[k], android.media.AudioManager.ADJUST_UNMUTE, 0); } catch (Exception ignored) {}
+        }
+    }
+
     /** Speaks the page's answer, then listens again. Empty text just listens again. Call on the main thread. */
     void answer(String text) {
         if (!on) return;
@@ -188,6 +224,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
+        if (!toneOn) muteTone();
         try {
             rec.startListening(i);
             listening = true;
