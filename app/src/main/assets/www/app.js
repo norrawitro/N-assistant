@@ -201,23 +201,33 @@
     clearTimeout(micOff);
     micOff = setTimeout(() => sw.classList.remove("hearing"), 700);
   };
-  // ---------- Wikipedia for Live: a found article answers at once; otherwise the AI is asked ----------
-  let wikiWait = null; // { id, q, timer }
-  function startWiki(q) {
+  // ---------- web sources for Live: Wikipedia first, then the sites the owner adds. No AI is needed for this. ----------
+  const WIKI_TEMPLATE = "https://th.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=1&explaintext=1&redirects=1&generator=search&gsrlimit=1&gsrsearch={q}";
+  /** Lines "ชื่อ|https://…{q}…" from Settings; each one is a site to search. */
+  function parseWebSources(raw) {
+    return String(raw || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+      const i = l.indexOf("|");
+      const name = i > 0 ? l.slice(0, i).trim() : "เว็บไซต์";
+      const url = (i > 0 ? l.slice(i + 1) : l).trim();
+      return /^https:\/\/.*\{q\}/.test(url) ? { name, url } : null;
+    }).filter(Boolean);
+  }
+  let webWait = null; // { id, q, idx, list, timer }
+  function startWeb(q) {
     setLight("bot-work");
-    const query = (window.NKb ? NKb.cleanQuery(q) : "") || q;
-    const id = "w" + uid();
-    if (wikiWait) clearTimeout(wikiWait.timer);
-    wikiWait = { id, q, timer: setTimeout(() => wikiMiss(id), 10000) };
-    A.wikiSearch(id, query);
+    const list = [{ name: "วิกิพีเดีย", url: WIKI_TEMPLATE }, ...parseWebSources(settings().webSources)];
+    webWait = { id: "w" + uid(), q, idx: 0, list, timer: null };
+    tryWebSource();
   }
-  function wikiMiss(id) {
-    if (!wikiWait || wikiWait.id !== id) return;
-    const q = wikiWait.q; wikiWait = null;
-    askLiveAI(q);
+  function tryWebSource() {
+    const w = webWait; if (!w) return;
+    clearTimeout(w.timer);
+    if (w.idx >= w.list.length) { webWait = null; askLiveAI(w.q); return; } // no source had it: the AI answers alone
+    const query = (window.NKb ? NKb.cleanQuery(w.q) : "") || w.q;
+    w.timer = setTimeout(() => { if (webWait === w) { w.idx++; tryWebSource(); } }, 10000);
+    A.webSearch(w.id, query, w.list[w.idx].url);
   }
-  // Wikipedia is a source for the AI, not an answer of its own: the AI reads the article and decides whether it fits
-  // the question. An article is used only when its title really matches the question's words.
+  // Wikipedia and the other sites are used only when the title really matches the question's words.
   function wikiRelevant(q, title) {
     const grams = x => { const t = NKb.cleanQuery(x).replace(/\s+/g, ""), out = new Set(); for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2)); return out; };
     const a = grams(q), b = grams(title);
@@ -227,12 +237,19 @@
     b.forEach(x => { if (a.has(x)) inB++; });
     return inA / a.size >= 0.6 || inB / b.size >= 0.6;
   }
-  handlers.wiki = r => {
-    if (!r || !wikiWait || r.id !== wikiWait.id) return;
-    clearTimeout(wikiWait.timer);
-    const q = wikiWait.q; wikiWait = null;
-    const useful = r.extract && wikiRelevant(q, r.title || "");
-    askLiveAI(q, useful ? `${r.title}: ${NKb.excerpt(r.extract, 600)}` : "");
+  handlers.web = r => {
+    const w = webWait;
+    if (!r || !w || r.id !== w.id) return;
+    clearTimeout(w.timer);
+    const src = w.list[w.idx];
+    if (r.extract && wikiRelevant(w.q, r.title || "")) {
+      webWait = null;
+      const answer = `จาก${src.name} เรื่อง${r.title} ${NKb.excerpt(r.extract, 260)}`;
+      remember(w.q, answer); // asked again later, the same answer comes from memory
+      liveReply(answer, "bot");
+      return;
+    }
+    w.idx++; tryWebSource(); // this site had nothing that fits: try the next one
   };
   // A copy made while Live is on (and the app is on screen) is read once, automatically.
   let lastCopied = "";
@@ -889,7 +906,7 @@
     if (basic) { liveReply(basic.a, "bot"); return; }
     // Wikipedia before the AI: a found article answers now; otherwise the AI is asked.
     // Questions about the app, the bot or the AI itself are not looked up on Wikipedia.
-    if (!liveJob && A && A.wikiSearch && !NO_WIKI.test(t)) { startWiki(t); return; }
+    if (!liveJob && A && A.wikiSearch && !NO_WIKI.test(t)) { startWeb(t); return; }
     if (liveJob) {
       liveQueue.push(t);
       liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
@@ -1689,7 +1706,7 @@ ${contextText(date)}
       wake: $("sWake").value || "06:30", wakeOn: $("sWakeOn").checked,
       evening: $("sEve").value || "19:30", eveningOn: $("sEveOn").checked, prepMinutes: +$("sPrep").value || 0,
       name: $("sName").value.trim(), goals: $("sGoals").value.trim(), model: $("sModel").value,
-      otherUrl: $("sOtherUrl").value.trim(), otherModel: $("sOtherModel").value.trim(),
+      webSources: $("sWebSources").value, otherUrl: $("sOtherUrl").value.trim(), otherModel: $("sOtherModel").value.trim(),
       mdRepo: $("sMdRepo").value.trim(), mdPath: $("sMdPath").value.trim() || "chat/n-assistant.md",
       provider: $("sProvider").value, localUrl: $("sLocalUrl").value.trim() || DEFAULT_SETTINGS.localUrl, localModel: $("sLocalModel").value || DEFAULT_SETTINGS.localModel, updatedAt: Date.now()
     });
@@ -1944,7 +1961,7 @@ ${contextText(date)}
     ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
-    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey()); renderProfiles();
+    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey()); renderProfiles(); set("sWebSources", s.webSources);
     set("sMdRepo", s.mdRepo); set("sMdPath", s.mdPath || "chat/n-assistant.md"); set("sMdToken", lsStr(LS_MD_TOKEN)); set("sMdKey", lsStr(LS_MD_KEY));
     { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);

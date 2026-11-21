@@ -825,6 +825,53 @@ public class MainActivity extends Activity {
             });
         }
 
+        /**
+         * Looks a question up on a web source: Wikipedia's API (JSON) or any https site whose address has {q} in it
+         * (HTML: its title and text). Answered as "web" with {id, title, extract}; an empty extract means nothing.
+         * No AI is involved, so this works when the AI is down.
+         */
+        @JavascriptInterface
+        public void webSearch(String id, String query, String template) {
+            io.execute(() -> {
+                String title = "", text = "";
+                try {
+                    String url = template.replace("{q}", java.net.URLEncoder.encode(query, "UTF-8"));
+                    if (!url.startsWith("https://")) throw new Exception("only https");
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(6000);
+                    c.setReadTimeout(8000);
+                    c.setRequestProperty("User-Agent", "N-assistant/1.0 (personal assistant app)");
+                    String body = new String(slurp(c.getInputStream()), StandardCharsets.UTF_8);
+                    if (body.trim().startsWith("{")) {
+                        JSONObject root = new JSONObject(body);
+                        JSONObject q = root.optJSONObject("query");
+                        JSONObject pages = q == null ? null : q.optJSONObject("pages");
+                        if (pages != null) {
+                            java.util.Iterator<String> it = pages.keys();
+                            if (it.hasNext()) {
+                                JSONObject p = pages.optJSONObject(it.next());
+                                if (p != null) { title = p.optString("title"); text = p.optString("extract"); }
+                            }
+                        }
+                    } else {
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<title[^>]*>(.*?)</title>",
+                                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL).matcher(body);
+                        if (m.find()) title = m.group(1).replaceAll("\\s+", " ").trim();
+                        text = body.replaceAll("(?is)<script.*?</script>|<style.*?</style>", " ")
+                                .replaceAll("<[^>]+>", " ").replace("&nbsp;", " ").replaceAll("\\s+", " ").trim();
+                        if (text.length() > 1500) text = text.substring(0, 1500);
+                    }
+                } catch (Exception ignored) {} // no network, or the site refused: the page moves on to the next source
+                JSONObject out = new JSONObject();
+                try {
+                    out.put("id", id);
+                    out.put("title", title);
+                    out.put("extract", text);
+                } catch (Exception ignored) {}
+                emit("web", out.toString());
+            });
+        }
+
         /** Saves the app's data to Documents/N-assistant so it survives uninstalling the app. */
         private static final String DATA_NAME = "ข้อมูล N-assistant.json";
 

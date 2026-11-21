@@ -940,3 +940,11 @@ Nothing below is built. Pick one at a time when there is quota again.
   (up to 5), so nothing saved is left out.
 - In "คำตอบที่จำไว้" each answer has ✎ to change the question or the answer; emptying the answer removes it. × still removes.
 - Tested in a browser with two remembered answers (one matched and read; edit saved). Not tested on a real phone yet.
+
+## 2026-11-21: web sources no longer depend on the AI
+
+- Order: the app's own data (bot, knowledge base, memory, FAQ; no internet or AI needed) → web sources → AI.
+- Web sources: Wikipedia first, then the sites listed in Settings → "แหล่งข้อมูลจากเว็บ" (one per line:
+  "ชื่อ|https://…{q}…"). A source answers only when its title matches the question's words; otherwise the next one is
+  tried. If none fits, the AI is asked alone. The web lookup never calls the AI, so it works when the AI server is down.
+- Not tested on a real phone yet.
