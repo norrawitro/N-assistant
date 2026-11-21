@@ -259,11 +259,6 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <button type="button" id="modeAi" aria-pressed="true">บอท + AI</button>
         <button type="button" id="modeEcho" aria-pressed="false">พูดซ้ำ (ทดสอบ)</button>
       </div>
-      <div class="wakebox">
-        <button type="button" class="btn" id="wakeBtn" aria-pressed="false">โหมดคำปลุก: ปิด</button>
-        <input type="text" id="wakeWord" value="ผู้ช่วย" aria-label="คำปลุก" autocomplete="off">
-      </div>
-      <p class="small muted" id="wakeHint">เปิดแล้ว: กดปุ่ม power แล้วพูด "ผู้ช่วย…" ภายใน 30 วินาที เช่น "ผู้ช่วย จดว่าซื้อนม"</p>
       <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย</p>
       <p class="small muted mono" id="micInfo" aria-live="off"></p>
       <p class="live-partial" id="livePartial" aria-live="polite"></p>
@@ -277,13 +272,8 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <button class="btn" id="readEdit" type="button">แก้ไข</button>
         <button class="btn" id="readClear" type="button">ล้าง</button>
       </div>
-      <div class="rb-row speeds" role="group" aria-label="ความเร็ว">
-        <button type="button" data-rate="1" aria-pressed="false">x1</button>
-        <button type="button" data-rate="1.5" aria-pressed="false">x1.5</button>
-        <button type="button" data-rate="2" aria-pressed="true">x2</button>
-        <button type="button" data-rate="3" aria-pressed="false">x3</button>
-      </div>
       <div class="rb-row"><button class="btn" id="readAuto" type="button" aria-pressed="false" style="flex:1 1 100%">อ่านที่คัดลอกอัตโนมัติ: ปิด</button></div>
+      <div class="rb-row"><button class="btn" id="typeSend" type="button">ส่งถาม Live</button></div>
       <p class="small muted" id="readStatus">วางหรือพิมพ์ข้อความ แล้วกดเล่น อ่านด้วยเสียงไทยของเครื่อง ไม่ใช้เน็ต ปิดจอแล้วยังอ่านต่อ</p>
       <button class="btn" id="readFix" type="button" hidden></button>
     </div>
@@ -296,7 +286,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
     <div class="card">
       <div class="row" style="justify-content:space-between"><h3>บันทึกการสนทนา</h3><button class="link-btn" id="convoClear" type="button">ล้าง</button></div>
       <ol class="convo" id="convo" aria-live="polite"></ol>
-      <div class="row"><input type="text" id="typeInput" placeholder="พิมพ์ถามหรือสั่งงาน (ไม่ต้องเปิด Live)" autocomplete="off" style="flex:1;min-width:0"><button class="btn primary" id="typeSend" type="button">ส่ง</button></div>
+
       <p class="small muted">ที่จดจะลงในหน้าเช้าและหน้าเย็นของวันนั้น เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นที่ไหน</p>
     </div>
 </section>
@@ -412,6 +402,8 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
 
   <!-- CHAT -->
   <section class="panel" id="p-chat" role="tabpanel" hidden>
+      </div>
+    </div>
     <div class="card">
       <h2>ผู้ช่วย AI</h2>
       <p class="muted small">พิมพ์ถามหรือสั่งงานได้เลย ผู้ช่วยรู้แผนวันนี้และการเตือนของคุณ ขอให้ตั้งเตือนได้ เช่น "เตือนฉันบ่าย 3 ให้โทรหาแม่"</p>
@@ -531,6 +523,34 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <span class="hint">AI จะใช้ข้อมูลนี้ทุกครั้งที่วางแผนให้</span>
       </div>
     </div>
+    <div class="card">
+      <h2>คำปลุกและเสียงพูด</h2>
+      <div class="wakebox">
+        <button type="button" class="btn" id="wakeBtn" aria-pressed="false">โหมดคำปลุก: ปิด</button>
+      </div>
+      <div class="field">
+        <label for="wakeWord">คำปลุก (ตั้งได้หลายคำ คั่นด้วยเครื่องหมายจุลภาค)</label>
+        <input type="text" id="wakeWord" value="ผู้ช่วย" autocomplete="off">
+        <span class="hint">ถ้าคำหนึ่งไม่ตื่น ให้ลองอีกคำ เช่น "ผู้ช่วย, น้องเอ็น"</span>
+      </div>
+      <p class="small muted" id="wakeHint">เปิดแล้ว: กดปุ่ม power แล้วพูดคำปลุกภายใน 30 วินาที</p>
+      <div class="field">
+        <span class="label">ความเร็วการอ่านข้อความ</span>
+        <div class="rb-row speeds" role="group" aria-label="ความเร็วการอ่านข้อความ">
+          <button type="button" data-read-rate="1">x1</button>
+          <button type="button" data-read-rate="1.5">x1.5</button>
+          <button type="button" data-read-rate="2">x2</button>
+          <button type="button" data-read-rate="3">x3</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">ความเร็วเสียงตอบของไลฟ์</span>
+        <div class="rb-row speeds" role="group" aria-label="ความเร็วเสียงตอบของไลฟ์">
+          <button type="button" data-live-rate="1">x1</button>
+          <button type="button" data-live-rate="1.5">x1.5</button>
+          <button type="button" data-live-rate="2">x2</button>
+          <button type="button" data-live-rate="3">x3</button>
+        </div>
     <div class="card">
       <h2>ผู้ช่วย AI</h2>
       <div class="field">

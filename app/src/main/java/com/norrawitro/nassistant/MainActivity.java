@@ -302,6 +302,9 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Speed of Live's spoken answers, from Settings. */
+    private float liveRateValue = 1f;
+
     private void startLive() {
         watchCopiesForLive(true);
         if (live == null) {
@@ -317,6 +320,7 @@ public class MainActivity extends Activity {
             });
         }
         live.setEcho(liveEcho);
+        live.setRate(liveRateValue);
         live.start();
     }
 
@@ -535,6 +539,12 @@ public class MainActivity extends Activity {
         }
 
         /** Speaks the AI's answer (or a message about what went wrong), then Live listens again. */
+        @JavascriptInterface
+        public void liveSetRate(double rate) {
+            liveRateValue = (float) rate;
+            main.post(() -> { if (live != null) live.setRate(liveRateValue); });
+        }
+
         @JavascriptInterface
         public void liveSay(String text) {
             main.post(() -> { if (live != null) live.answer(text); });

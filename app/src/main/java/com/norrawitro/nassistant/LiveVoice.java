@@ -122,6 +122,10 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
 
     void setEcho(boolean echo) { this.echo = echo; }
 
+    /** Speed of the spoken answers (1, 1.5, 2 or 3), chosen in Settings. */
+    private float rate = 1f;
+    void setRate(float r) { rate = r; }
+
     /** Speaks the page's answer, then listens again. Empty text just listens again. Call on the main thread. */
     void answer(String text) {
         if (!on) return;
@@ -207,6 +211,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         main.removeCallbacks(listenTask);
         cancelRec();
         ev.state("speaking", "กำลังพูด…");
+        try { tts.setSpeechRate(rate); } catch (Exception ignored) {}
         String id = "u" + (++utterance);
         int r = tts.speak(text, speaking > 0 ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH, null, id);
         if (r == TextToSpeech.SUCCESS) speaking++;

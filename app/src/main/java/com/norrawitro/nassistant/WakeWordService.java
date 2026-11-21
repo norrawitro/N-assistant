@@ -51,12 +51,26 @@ public class WakeWordService extends Service implements RecognitionListener {
     private BroadcastReceiver screen;
 
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("wake_word", Context.MODE_PRIVATE); }
-    static String word(Context c) { return prefs(c).getString("word", "ผู้ช่วย"); }
+    static String word(Context c) { return words(c)[0]; }
+
+    /** Several wake words, comma or line separated (for example "ผู้ช่วย, น้องเอ็น"); any of them wakes the phone. */
+    static String[] words(Context c) {
+        String raw = prefs(c).getString("words", "ผู้ช่วย");
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        for (String p : raw.split("[,\n]")) { String t = p.trim(); if (!t.isEmpty()) out.add(t); }
+        return out.isEmpty() ? new String[]{"ผู้ช่วย"} : out.toArray(new String[0]);
+    }
+
+    static String joinWords(String raw) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : (raw == null ? "" : raw).split("[,\n]")) { String t = p.trim(); if (!t.isEmpty()) sb.append(sb.length() > 0 ? "," : "").append(t); }
+        return sb.length() == 0 ? "ผู้ช่วย" : sb.toString();
+    }
     static boolean enabled(Context c) { return prefs(c).getBoolean("on", false); }
 
     /** Must be called while the app is on screen (Android only lets a microphone service start then). */
     static void start(Context c, String word) {
-        prefs(c).edit().putBoolean("on", true).putString("word", word == null || word.trim().isEmpty() ? "ผู้ช่วย" : word.trim()).apply();
+        prefs(c).edit().putBoolean("on", true).putString("words", joinWords(word)).apply();
         Intent i = new Intent(c, WakeWordService.class).setAction(ACTION_START);
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
     }
@@ -231,11 +245,12 @@ public class WakeWordService extends Service implements RecognitionListener {
     public void onResults(Bundle results) {
         listening = false;
         ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        String w = word(this);
         if (list != null) {
-            for (String heard : list) {
-                String rest = afterWakeWord(heard == null ? "" : heard, w);
-                if (rest != null) { woke(rest); return; }
+            for (String w : words(this)) { // every wake word is tried; the first one heard wakes the phone
+                for (String heard : list) {
+                    String rest = afterWakeWord(heard == null ? "" : heard, w);
+                    if (rest != null) { woke(rest); return; }
+                }
             }
         }
         main.postDelayed(this::listen, 200); // not the wake word: ignore it and keep listening in the window
