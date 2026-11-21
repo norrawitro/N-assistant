@@ -897,3 +897,14 @@ Nothing below is built. Pick one at a time when there is quota again.
   model; "ใช้ตัวนี้" fills the fields from a saved one, so changing the model needs no re-typing; "ลบตัวนี้" removes one.
 - Kept in the phone's local storage (not in the data file), because it holds keys.
 - Tested in a browser: two models saved under one URL, one picked again with its URL and key filled in.
+
+## 2026-11-21: one text box on Live; speeds and wake words in Settings
+
+- Live has one text box (the read-aloud box). What is in it is what "ส่งถาม Live" sends and what ▶ reads. The separate
+  typing box is gone.
+- Speeds moved to Settings: "ความเร็วการอ่านข้อความ" (x1–x3, for the reading box) and "ความเร็วเสียงตอบของไลฟ์" (x1–x3,
+  for Live's spoken answers; `LiveVoice.setRate`).
+- Wake word moved to Settings with its switch and text box. It takes several words separated by commas (for example
+  "ผู้ช่วย, น้องเอ็น"); any of them wakes the phone (`WakeWordService.words`).
+- Tested in a browser: one text box, the speed buttons in Settings, and the Live speed passed to the native side.
+  Not tested on a real phone yet.

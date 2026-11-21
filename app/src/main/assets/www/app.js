@@ -121,7 +121,7 @@
     const b = e.target.closest("[data-go]"); if (!b) return;
     setMenu(false);
     // The typed assistant chat now lives in the Live conversation (one place for voice and typing).
-    if (b.dataset.go === "chatlive") { showTab("live"); setTimeout(() => { $("typeInput").scrollIntoView({ block: "center" }); $("typeInput").focus(); }, 50); }
+    if (b.dataset.go === "chatlive") { showTab("live"); setTimeout(() => { $("readText").scrollIntoView({ block: "center" }); $("readText").focus(); }, 50); }
     else showTab(b.dataset.go);
   });
   document.addEventListener("click", e => { if (!$("menu").hidden && !e.target.closest("#menu")) setMenu(false); });
@@ -300,14 +300,12 @@
 
   // ---------- typing into the same conversation (replaces the separate chat page) ----------
   function sendTyped() {
-    const v = $("typeInput").value.trim(); if (!v) return;
-    $("typeInput").value = "";
+    const v = $("readText").value.trim(); if (!v) return; // the one box: what is in it is what is sent
     addConvo("me", v, { typed: true });
     if (liveMode === "ai") handleHeard(v);
     else liveReply(v, "app"); // echo mode just repeats, as with voice
   }
   $("typeSend").addEventListener("click", sendTyped);
-  $("typeInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); sendTyped(); } });
   /** One-time copy of the old assistant-chat history into the Live conversation, in time order. */
   function migrateChat() {
     try { if (localStorage.getItem("nassistant.chatMigrated")) return; } catch { return; }
@@ -453,14 +451,27 @@
   });
   $("reader").addEventListener("click", e => { const sp = e.target.closest("span[data-i]"); if (sp) startReading(+sp.dataset.i); });
   $("readText").addEventListener("input", () => { if (!readPlaying) { readSentences = []; readAt = -1; renderReader(); } saveRead(); });
-  document.querySelectorAll("#readBar .speeds button").forEach(b => b.addEventListener("click", () => {
-    readRate = +b.dataset.rate; saveRead();
+  // Speeds live in Settings: the speed of reading text, and the speed of Live's spoken answers.
+  const LIVE_RATE_KEY = "nassistant.liveRate";
+  let liveRate = 1;
+  try { const v = +localStorage.getItem(LIVE_RATE_KEY); if ([1, 1.5, 2, 3].includes(v)) liveRate = v; } catch {}
+  function paintRates() {
+    document.querySelectorAll("[data-read-rate]").forEach(x => x.setAttribute("aria-pressed", String(+x.dataset.readRate === readRate)));
+    document.querySelectorAll("[data-live-rate]").forEach(x => x.setAttribute("aria-pressed", String(+x.dataset.liveRate === liveRate)));
+  }
+  document.querySelectorAll("[data-read-rate]").forEach(b => b.addEventListener("click", () => {
+    readRate = +b.dataset.readRate; saveRead(); paintRates();
     if (A && A.readAutoSet && $("readAuto").getAttribute("aria-pressed") === "true") A.readAutoSet(true, readRate); // the next copy uses the new speed
-    document.querySelectorAll("#readBar .speeds button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    if (readPlaying) startReading(Math.max(0, readAt)); // restart the current sentence at the new speed
-    else $("readStatus").textContent = `ความเร็ว x${readRate}`;
+    if (readPlaying) startReading(Math.max(0, readAt)); // the current sentence goes on at the new speed
   }));
-  document.querySelectorAll("#readBar .speeds button").forEach(x => x.setAttribute("aria-pressed", String(+x.dataset.rate === readRate)));
+  document.querySelectorAll("[data-live-rate]").forEach(b => b.addEventListener("click", () => {
+    liveRate = +b.dataset.liveRate;
+    try { localStorage.setItem(LIVE_RATE_KEY, String(liveRate)); } catch {}
+    paintRates();
+    if (A && A.liveSetRate) A.liveSetRate(liveRate);
+  }));
+  paintRates();
+  if (A && A.liveSetRate) A.liveSetRate(liveRate);
   /** Back on screen while reading goes on in the background: show where it is. */
   function syncRead() {
     let s = null; try { s = A && A.readStatus ? JSON.parse(A.readStatus()) : null; } catch {}
