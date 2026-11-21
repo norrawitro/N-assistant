@@ -94,6 +94,8 @@ body.reading .clock{display:none}
 #p-read{gap:10px}
 .readbar{position:sticky;top:0;z-index:15;background:var(--bg);padding:6px 0 4px;display:flex;flex-direction:column;gap:8px}
 .readbar[hidden]{display:none!important}
+/* On the Live page the read-aloud controls are part of the card, not a sticky bar. */
+#p-live .readbar{position:static;background:none;padding:0}
 .rb-row{display:flex;flex-wrap:wrap;gap:8px;width:100%}
 .rb-row .btn{flex:1 1 0;min-width:64px;padding:10px 4px;line-height:1.25}
 .speeds button{flex:1 1 0;min-width:52px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 1rem var(--f-display);padding:10px 4px;border-radius:10px;cursor:pointer}
@@ -266,16 +268,8 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <p class="small muted mono" id="micInfo" aria-live="off"></p>
       <p class="live-partial" id="livePartial" aria-live="polite"></p>
     </div>
-    <div class="card">
-      <div class="row" style="justify-content:space-between"><h3>บันทึกการสนทนา</h3><button class="link-btn" id="convoClear" type="button">ล้าง</button></div>
-      <ol class="convo" id="convo" aria-live="polite"></ol>
-      <div class="row"><input type="text" id="typeInput" placeholder="พิมพ์ถามหรือสั่งงาน (ไม่ต้องเปิด Live)" autocomplete="off" style="flex:1;min-width:0"><button class="btn primary" id="typeSend" type="button">ส่ง</button></div>
-      <p class="small muted">ที่จดจะลงในหน้าเช้าและหน้าเย็นของวันนั้น เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นที่ไหน</p>
-    </div>
-</section>
-
-  <!-- READ ALOUD -->
-  <section class="panel" id="p-read" role="tabpanel" hidden>
+    <div class="card readcard">
+      <h3>อ่านข้อความ</h3>
     <div class="readbar" id="readBar">
       <div class="rb-row">
         <button class="btn primary" id="readPaste" type="button">📋 วางและเล่น</button>
@@ -298,7 +292,16 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       <textarea id="readText" placeholder="วางหรือพิมพ์ข้อความที่นี่" aria-label="ข้อความที่จะอ่าน"></textarea>
       <div class="reader" id="reader" aria-live="off" hidden></div>
     </div>
-  </section>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h3>บันทึกการสนทนา</h3><button class="link-btn" id="convoClear" type="button">ล้าง</button></div>
+      <ol class="convo" id="convo" aria-live="polite"></ol>
+      <div class="row"><input type="text" id="typeInput" placeholder="พิมพ์ถามหรือสั่งงาน (ไม่ต้องเปิด Live)" autocomplete="off" style="flex:1;min-width:0"><button class="btn primary" id="typeSend" type="button">ส่ง</button></div>
+      <p class="small muted">ที่จดจะลงในหน้าเช้าและหน้าเย็นของวันนั้น เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นที่ไหน</p>
+    </div>
+</section>
+
+  <!-- READ ALOUD -->
 
   <!-- KNOWLEDGE BASE -->
   <section class="panel" id="p-kb" role="tabpanel" hidden>

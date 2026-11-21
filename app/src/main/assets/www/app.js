@@ -85,14 +85,13 @@
   const TABS = ["read", "kb", "live", "morning", "evening", "chat", "remind", "history", "settings"];
   const TAB_TITLE = { read: "อ่านออกเสียง", kb: "คลังความรู้", live: "Live", morning: "เช้า", evening: "เย็น", chat: "ผู้ช่วย", remind: "เตือน", history: "ประวัติ", settings: "ตั้งค่า" };
   function showTab(name) {
+    if (name === "read") name = "live"; // read-aloud now lives on the Live page
     if (!TABS.includes(name)) name = "live";
     $("viewTitle").textContent = name === "live" ? "Live" : `‹ ${TAB_TITLE[name]}`;
     currentTab = name;
     document.querySelectorAll("#menu [data-go]").forEach(b => b.toggleAttribute("aria-current", b.dataset.go === name));
     if (name === "live") renderConvo();
-    $("readBar").hidden = name !== "read";
-    document.body.classList.toggle("reading", name === "read");
-    if (name === "read") { setReadMode(readSentences.length > 0); requestAnimationFrame(sizeReadBox); syncRead(); }
+    if (name === "live") { requestAnimationFrame(sizeReadBox); syncRead(); }
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     TABS.forEach(t => $("p-" + t).hidden = t !== name);
     if (name === "evening") renderChecks();
@@ -232,6 +231,8 @@
     if (!text || text === lastCopied || !liveOn()) return;
     lastCopied = text;
     addConvo("note", `คัดลอกใหม่ ${text.length.toLocaleString("th-TH")} ตัวอักษร · อ่านให้ฟัง`);
+    // Shown in the Live page's text box (with ▶ / speed buttons there) and spoken by Live.
+    $("readText").value = text; readSentences = []; readAt = -1; renderReader(); setReadMode(false); saveRead();
     if (A && A.liveSay) A.liveSay(text);
   };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
@@ -345,9 +346,8 @@
   /** The box fills the screen below the controls; the line being read stays at one height (ANCHOR) in it. */
   const ANCHOR = 0.3;
   function sizeReadBox() {
-    if ($("p-read").hidden) return;
-    const box = $("readBox"), top = box.getBoundingClientRect().top;
-    box.style.height = Math.max(100, Math.floor(window.innerHeight - Math.max(top, 0) - 12)) + "px";
+    if ($("p-live").hidden) return;
+    const box = $("readBox");
     // Space above the first and below the last sentence, so every sentence can sit at the anchor line.
     const r = $("reader"), h = box.clientHeight;
     r.style.paddingTop = Math.round(h * ANCHOR) + "px";
@@ -379,6 +379,7 @@
   }
   function setReadUi(playing, msg) {
     readPlaying = playing;
+    document.body.classList.toggle("reading", playing); // hides the clock while reading
     $("readPlay").textContent = playing ? "■ หยุด" : "▶ เล่น";
     $("readPlay").classList.toggle("primary", playing);
     if (msg !== undefined) $("readStatus").textContent = msg;
@@ -856,7 +857,6 @@
       if (!txt || !txt.trim()) { liveReply("คลิปบอร์ดว่างอยู่ครับ คัดลอกข้อความมาก่อนแล้วสั่งใหม่", "bot"); return; }
       addConvo("bot", `อ่านข้อความที่คัดลอกไว้ให้ฟังครับ (${txt.trim().length.toLocaleString("th-TH")} ตัวอักษร) หยุดได้ที่หน้าอ่านออกเสียงหรือแจ้งเตือน`);
       $("readText").value = txt;
-      showTab("read");
       startReading(0); // turns Live off: one voice at a time
     } else if (r.type === "whereNow") {
       readWhere(); liveReply(whereText(), "bot");
