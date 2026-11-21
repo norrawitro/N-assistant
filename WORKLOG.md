@@ -933,3 +933,10 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Questions about the app, the bot or the AI itself (NO_WIKI: บอท, เอไอ, AI, แอป, คำตอบ, ความจำ, ระบบ, ฉัน, ผม, คุณ,
   ล่าสุด) skip Wikipedia. Wikipedia no longer gives its own "จากวิกิพีเดีย" answer.
 - Known gap: an article with a different title, such as "ตากสินมหาราช" for "พระเจ้าตากสิน", is not used; the AI answers alone.
+
+## 2026-11-21: read every matching saved answer; edit or remove a wrong one
+
+- Live reads all matching remembered answers (up to 5), not only the first, and all close knowledge-base pieces
+  (up to 5), so nothing saved is left out.
+- In "คำตอบที่จำไว้" each answer has ✎ to change the question or the answer; emptying the answer removes it. × still removes.
+- Tested in a browser with two remembered answers (one matched and read; edit saved). Not tested on a real phone yet.
