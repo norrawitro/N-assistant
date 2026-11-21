@@ -21,7 +21,23 @@
   const LS_MD_KEY = "nassistant.mdchat.key";     // AES key for the Markdown-file channel; stays on this phone
   const LS_PENDING = "nassistant.pending";
   let docs = lsGet(LS_DOCS) || {}; // "settings", "reminders", "day-YYYY-MM-DD"
-  function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); schedulePrepSync(); }
+  function save(id, body) { docs[id] = body; lsSet(LS_DOCS, docs); renderHistory(); schedulePrepSync(); scheduleDataBackup(); }
+  // Everything the owner has (settings without keys, days, reminders, knowledge, memory) is also kept in a file outside
+  // the app, so uninstalling the app does not lose it. Written a few seconds after the last change.
+  let dataTimer = null;
+  function scheduleDataBackup() {
+    if (!A || !A.saveDataFile) return;
+    clearTimeout(dataTimer);
+    dataTimer = setTimeout(() => { try { A.saveDataFile(JSON.stringify(docs)); } catch {} }, 3000);
+  }
+  /** A fresh install with no data: take the saved file, then show it. */
+  function restoreData() {
+    if (!A || !A.readDataFile || Object.keys(docs).length) return;
+    let data = null; try { data = JSON.parse(A.readDataFile() || "null"); } catch {}
+    if (!data || typeof data !== "object") return;
+    try { lsSet(LS_DOCS, data); } catch { return; }
+    location.reload();
+  }
 
   const DEFAULT_SETTINGS = { wake: "06:30", wakeOn: true, evening: "19:30", eveningOn: true, prepMinutes: 15, name: "", goals: "", provider: "local", localUrl: "http://127.0.0.1:11434", localModel: "qwen-fast:latest", model: "claude-opus-5-5", otherUrl: "", otherModel: "", mdRepo: "", mdPath: "chat/n-assistant.md" };
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(docs.settings || {}) });
@@ -185,6 +201,29 @@
     sw.classList.add("hearing");
     clearTimeout(micOff);
     micOff = setTimeout(() => sw.classList.remove("hearing"), 700);
+  };
+  // ---------- Wikipedia for Live: a found article answers at once; otherwise the AI is asked ----------
+  let wikiWait = null; // { id, q, timer }
+  function startWiki(q) {
+    const query = (window.NKb ? NKb.cleanQuery(q) : "") || q;
+    const id = "w" + uid();
+    if (wikiWait) clearTimeout(wikiWait.timer);
+    wikiWait = { id, q, timer: setTimeout(() => wikiMiss(id), 10000) };
+    A.wikiSearch(id, query);
+  }
+  function wikiMiss(id) {
+    if (!wikiWait || wikiWait.id !== id) return;
+    const q = wikiWait.q; wikiWait = null;
+    askLiveAI(q);
+  }
+  handlers.wiki = r => {
+    if (!r || !wikiWait || r.id !== wikiWait.id) return;
+    clearTimeout(wikiWait.timer);
+    const q = wikiWait.q; wikiWait = null;
+    if (!r.extract) { askLiveAI(q); return; }
+    const answer = `จากวิกิพีเดีย เรื่อง${r.title} ${NKb.excerpt(r.extract, 260)}`;
+    remember(q, answer); // asked again later, the same answer comes from memory
+    liveReply(answer, "bot");
   };
   // A copy made while Live is on (and the app is on screen) is read once, automatically.
   let lastCopied = "";
@@ -758,6 +797,8 @@
     }
     const basic = faqFind(t);
     if (basic) { liveReply(basic.a, "bot"); return; }
+    // Wikipedia before the AI: a found article answers now; otherwise the AI is asked.
+    if (!liveJob && A && A.wikiSearch) { startWiki(t); return; }
     if (liveJob) {
       liveQueue.push(t);
       liveReply("รับทราบครับ จะส่งให้เอไอต่อจากคำตอบแรก", "bot");
@@ -1792,6 +1833,7 @@ ${contextText(date)}
   // ---------- start ----------
   const info = nativeInfo();
   $("appVer").textContent = info ? info.version : "เว็บ";
+  restoreData();
   pullResults();
   migrateNotes(); migrateChat();
   if (A && A.setPlaceRules) A.setPlaceRules(JSON.stringify(placeRules())); // native copy for the event receiver

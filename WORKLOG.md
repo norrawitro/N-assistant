@@ -870,3 +870,15 @@ Nothing below is built. Pick one at a time when there is quota again.
 - While Live is on and N-assistant is on screen, a new copy is read aloud once in Live. The page adds it to the
   conversation as "คัดลอกใหม่ … · อ่านให้ฟัง" and speaks it with the usual quiet check.
 - Works only while the app is on screen (Android blocks background clipboard reads). Not tested on a real phone yet.
+
+## 2026-11-21: Live searches Wikipedia; the app's data is also saved outside the app
+
+- Live: when no local answer (bot, knowledge base, memory, FAQ) is found, it searches Thai Wikipedia first and answers
+  with the article's opening paragraph ("จากวิกิพีเดีย เรื่อง … "). If nothing is found or the search fails, the AI is
+  asked as before. A Wikipedia answer is remembered, so asking again gives the same answer from memory.
+- Data: everything in the app (settings without keys, days, reminders, knowledge, memory) is saved a few seconds after
+  each change to Documents/N-assistant/ข้อมูล N-assistant.json, so uninstalling does not lose it. On a fresh install
+  with no data, the app loads that file and reloads.
+- Not tested on a real phone. Whether Android gives the reinstalled app back the file it wrote earlier must be checked
+  on the phone; if not, the file can still be imported with the existing import (ประวัติ → นำเข้าไฟล์ JSON).
+- API keys are not in that file (they are stored separately on the phone).
