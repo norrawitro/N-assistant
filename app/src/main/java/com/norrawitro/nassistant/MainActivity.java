@@ -304,6 +304,8 @@ public class MainActivity extends Activity {
 
     /** Speed of Live's spoken answers, from Settings. */
     private float liveRateValue = 1f;
+    /** Whether the recognizer's start tone is heard (Settings). Off by default. */
+    private boolean liveToneOn = false;
 
     private void startLive() {
         watchCopiesForLive(true);
@@ -321,6 +323,7 @@ public class MainActivity extends Activity {
         }
         live.setEcho(liveEcho);
         live.setRate(liveRateValue);
+        live.setTone(liveToneOn);
         live.start();
     }
 
@@ -539,6 +542,12 @@ public class MainActivity extends Activity {
         }
 
         /** Speaks the AI's answer (or a message about what went wrong), then Live listens again. */
+        @JavascriptInterface
+        public void liveSetTone(boolean on) {
+            liveToneOn = on;
+            main.post(() -> { if (live != null) live.setTone(liveToneOn); });
+        }
+
         @JavascriptInterface
         public void liveSetRate(double rate) {
             liveRateValue = (float) rate;

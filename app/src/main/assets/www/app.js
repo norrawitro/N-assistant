@@ -472,6 +472,22 @@
   }));
   paintRates();
   if (A && A.liveSetRate) A.liveSetRate(liveRate);
+  // The listening tone is off unless turned on here (it is muted while Live listens).
+  const LIVE_TONE_KEY = "nassistant.liveTone";
+  let liveTone = false;
+  try { liveTone = localStorage.getItem(LIVE_TONE_KEY) === "1"; } catch {}
+  function paintTone() {
+    $("liveTone").setAttribute("aria-pressed", String(liveTone));
+    $("liveTone").textContent = `เสียงบอกว่ากำลังฟัง: ${liveTone ? "เปิด" : "ปิด"}`;
+  }
+  $("liveTone").addEventListener("click", () => {
+    liveTone = !liveTone;
+    try { localStorage.setItem(LIVE_TONE_KEY, liveTone ? "1" : "0"); } catch {}
+    paintTone();
+    if (A && A.liveSetTone) A.liveSetTone(liveTone);
+  });
+  paintTone();
+  if (A && A.liveSetTone) A.liveSetTone(liveTone);
   /** Back on screen while reading goes on in the background: show where it is. */
   function syncRead() {
     let s = null; try { s = A && A.readStatus ? JSON.parse(A.readStatus()) : null; } catch {}

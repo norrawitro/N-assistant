@@ -908,3 +908,11 @@ Nothing below is built. Pick one at a time when there is quota again.
   "ผู้ช่วย, น้องเอ็น"); any of them wakes the phone (`WakeWordService.words`).
 - Tested in a browser: one text box, the speed buttons in Settings, and the Live speed passed to the native side.
   Not tested on a real phone yet.
+
+## 2026-11-21: listening tone in Live can be turned off
+
+- The phone's speech recognizer plays a short tone each time it starts listening. Live now mutes the music,
+  notification and system streams for about 0.9 s around each start, as the wake word does. Settings → "เสียงบอกว่ากำลังฟัง"
+  turns the tone back on (default: off).
+- Also fixed: the Settings card markup had lost closing tags when the speed and wake controls were moved.
+- Not tested on a real phone yet.
