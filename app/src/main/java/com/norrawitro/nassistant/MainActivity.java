@@ -278,7 +278,32 @@ public class MainActivity extends Activity {
         else emitLive("error", "ต้องอนุญาตไมโครโฟนก่อนจึงจะใช้ Live ได้", false);
     }
 
+    /** While Live is on and the app is on screen, a new copy is handed to the page once (the page reads it). */
+    private android.content.ClipboardManager.OnPrimaryClipChangedListener liveClip;
+
+    private void watchCopiesForLive(boolean on) {
+        android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+        if (on && liveClip == null) {
+            liveClip = () -> {
+                String text = "";
+                try {
+                    android.content.ClipData cd = cm.getPrimaryClip();
+                    if (cd != null && cd.getItemCount() > 0) {
+                        CharSequence cs = cd.getItemAt(0).coerceToText(MainActivity.this);
+                        if (cs != null) text = cs.toString().trim();
+                    }
+                } catch (Exception ignored) {} // Android can refuse the read; then nothing is read
+                if (!text.isEmpty()) emit("liveCopied", JSONObject.quote(text));
+            };
+            try { cm.addPrimaryClipChangedListener(liveClip); } catch (Exception ignored) {}
+        } else if (!on && liveClip != null) {
+            try { cm.removePrimaryClipChangedListener(liveClip); } catch (Exception ignored) {}
+            liveClip = null;
+        }
+    }
+
     private void startLive() {
+        watchCopiesForLive(true);
         if (live == null) {
             live = new LiveVoice(this, new LiveVoice.Events() {
                 @Override public void state(String state, String message) { emitLive(state, message, live != null && live.isOn()); }
@@ -300,6 +325,14 @@ public class MainActivity extends Activity {
     }
 
     /** Calls window.__native(event, payload) in the page. payload must already be valid JS. */
+    private static byte[] slurp(java.io.InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+        return bo.toByteArray();
+    }
+
     private void emit(String event, String payloadJs) {
         main.post(() -> web.evaluateJavascript(
                 "window.__native&&window.__native(" + JSONObject.quote(event) + "," + payloadJs + ")", null));
@@ -737,6 +770,71 @@ public class MainActivity extends Activity {
         }
 
         /** {playing, index, total} so the page can show where reading is after coming back. */
+        /**
+         * Wikipedia (Thai) for Live: the best matching article's opening paragraph. Answered as "wiki" with
+         * {id, title, extract}; an empty extract means nothing was found.
+         */
+        @JavascriptInterface
+        public void wikiSearch(String id, String query) {
+            io.execute(() -> {
+                JSONObject out = new JSONObject();
+                String title = "", extract = "";
+                try {
+                    String url = "https://th.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=1&explaintext=1&redirects=1&generator=search&gsrlimit=1&gsrsearch="
+                            + java.net.URLEncoder.encode(query, "UTF-8");
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(6000);
+                    c.setReadTimeout(8000);
+                    c.setRequestProperty("User-Agent", "N-assistant/1.0 (personal assistant app)");
+                    JSONObject root = new JSONObject(new String(slurp(c.getInputStream()), StandardCharsets.UTF_8));
+                    JSONObject q = root.optJSONObject("query");
+                    JSONObject pages = q == null ? null : q.optJSONObject("pages");
+                    if (pages != null) {
+                        java.util.Iterator<String> it = pages.keys();
+                        if (it.hasNext()) {
+                            JSONObject p = pages.optJSONObject(it.next());
+                            if (p != null) { title = p.optString("title"); extract = p.optString("extract"); }
+                        }
+                    }
+                } catch (Exception ignored) {} // no network or no article: the page asks the AI instead
+                try {
+                    out.put("id", id);
+                    out.put("title", title);
+                    out.put("extract", extract);
+                } catch (Exception ignored) {}
+                emit("wiki", out.toString());
+            });
+        }
+
+        /** Saves the app's data to Documents/N-assistant so it survives uninstalling the app. */
+        private static final String DATA_NAME = "ข้อมูล N-assistant.json";
+
+        @JavascriptInterface
+        public void saveDataFile(String json) {
+            io.execute(() -> writeTextFile(DATA_NAME, json));
+        }
+
+        /** The saved data, or "" when there is none (for example after a fresh install). */
+        @JavascriptInterface
+        public String readDataFile() {
+            try {
+                android.content.ContentResolver cr = getContentResolver();
+                android.net.Uri files = android.provider.MediaStore.Files.getContentUri("external");
+                android.net.Uri uri = null;
+                try (android.database.Cursor c = cr.query(files, new String[]{android.provider.MediaStore.MediaColumns._ID},
+                        android.provider.MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?",
+                        new String[]{"Documents/N-assistant/", DATA_NAME}, null)) {
+                    if (c != null && c.moveToFirst()) uri = android.content.ContentUris.withAppendedId(files, c.getLong(0));
+                }
+                if (uri == null) return "";
+                try (java.io.InputStream in = cr.openInputStream(uri)) {
+                    return in == null ? "" : new String(slurp(in), StandardCharsets.UTF_8);
+                }
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
         /** "true" when the automatic read-aloud switch is on (kept on the phone). */
         @JavascriptInterface
         public String readAutoState() { return String.valueOf(ReadAloudService.autoOn(MainActivity.this)); }
@@ -767,7 +865,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void liveStop() {
-            main.post(() -> { if (live != null) live.stop(); else emitLive("off", "", false); });
+            main.post(() -> { watchCopiesForLive(false); if (live != null) live.stop(); else emitLive("off", "", false); });
         }
 
         @JavascriptInterface
