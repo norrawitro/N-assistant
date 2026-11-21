@@ -916,3 +916,11 @@ Nothing below is built. Pick one at a time when there is quota again.
   turns the tone back on (default: off).
 - Also fixed: the Settings card markup had lost closing tags when the speed and wake controls were moved.
 - Not tested on a real phone yet.
+
+## 2026-11-21: status light for bot and AI
+
+- A light under the Live status line shows which part is busy: บอท (teal) or AI (orange), and whether it is คิด,
+  ทำงาน (searching Wikipedia) or ตอบ. ว่าง when nothing is happening.
+- The bot's own steps flash for a short time; while the AI works, the light stays on "AI กำลังคิด" until the answer arrives,
+  then shows "AI กำลังตอบ" for a few seconds.
+- Not tested on a real phone yet.

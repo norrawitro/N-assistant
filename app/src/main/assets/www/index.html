@@ -76,6 +76,14 @@ p{margin:0}
   box-shadow:0 0 0 calc(6px + var(--mic-lv,0) * 16px) hsl(var(--mic-hue,190) 90% 60% / calc(.18 + var(--mic-lv,0) * .5)),
              0 0 calc(10px + var(--mic-lv,0) * 40px) hsl(var(--mic-hue,190) 95% 60% / calc(var(--mic-lv,0) * .9))}
 .live-status{min-height:1.6em;text-align:center}
+/* Status light: is the bot or the AI thinking, working or answering. Orange = AI, teal = bot. */
+.status-light{display:inline-flex;align-items:center;gap:8px;align-self:center;margin:0;padding:4px 14px;border:1px solid var(--line);border-radius:999px;font:600 .85rem var(--f-body);color:var(--muted)}
+.status-light::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.status-light.bot::before{background:#3ab8c4}
+.status-light.ai::before{background:#f08a3c}
+.status-light.bot,.status-light.ai{color:var(--ink)}
+.status-light.think::before,.status-light.work::before{animation:pulse 1.2s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.status-light::before{animation:none!important}}
 .steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 .steps li.done{color:var(--ok)}
 .steps code,.small code{overflow-wrap:anywhere}
@@ -260,6 +268,7 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
         <button type="button" id="modeEcho" aria-pressed="false">พูดซ้ำ (ทดสอบ)</button>
       </div>
       <p class="live-status" id="liveStatus">เปิด Live แล้วพูดภาษาไทย</p>
+      <p class="status-light idle" id="statusLight" aria-live="polite">ว่าง</p>
       <p class="small muted mono" id="micInfo" aria-live="off"></p>
       <p class="live-partial" id="livePartial" aria-live="polite"></p>
     </div>
