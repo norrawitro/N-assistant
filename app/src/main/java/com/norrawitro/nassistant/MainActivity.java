@@ -278,7 +278,32 @@ public class MainActivity extends Activity {
         else emitLive("error", "ต้องอนุญาตไมโครโฟนก่อนจึงจะใช้ Live ได้", false);
     }
 
+    /** While Live is on and the app is on screen, a new copy is handed to the page once (the page reads it). */
+    private android.content.ClipboardManager.OnPrimaryClipChangedListener liveClip;
+
+    private void watchCopiesForLive(boolean on) {
+        android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+        if (on && liveClip == null) {
+            liveClip = () -> {
+                String text = "";
+                try {
+                    android.content.ClipData cd = cm.getPrimaryClip();
+                    if (cd != null && cd.getItemCount() > 0) {
+                        CharSequence cs = cd.getItemAt(0).coerceToText(MainActivity.this);
+                        if (cs != null) text = cs.toString().trim();
+                    }
+                } catch (Exception ignored) {} // Android can refuse the read; then nothing is read
+                if (!text.isEmpty()) emit("liveCopied", JSONObject.quote(text));
+            };
+            try { cm.addPrimaryClipChangedListener(liveClip); } catch (Exception ignored) {}
+        } else if (!on && liveClip != null) {
+            try { cm.removePrimaryClipChangedListener(liveClip); } catch (Exception ignored) {}
+            liveClip = null;
+        }
+    }
+
     private void startLive() {
+        watchCopiesForLive(true);
         if (live == null) {
             live = new LiveVoice(this, new LiveVoice.Events() {
                 @Override public void state(String state, String message) { emitLive(state, message, live != null && live.isOn()); }
@@ -767,7 +792,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void liveStop() {
-            main.post(() -> { if (live != null) live.stop(); else emitLive("off", "", false); });
+            main.post(() -> { watchCopiesForLive(false); if (live != null) live.stop(); else emitLive("off", "", false); });
         }
 
         @JavascriptInterface

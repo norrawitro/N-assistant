@@ -864,3 +864,9 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Limit: Android 10 and later can refuse background apps to read the clipboard. If the copy is not read while the
   app is closed, keep N-assistant open (it works reliably then). Test on the phone to see which case applies.
 - Not tested on a real phone yet; compiled by CI only.
+
+## 2026-11-21: Live reads a new copy once, automatically (app on screen)
+
+- While Live is on and N-assistant is on screen, a new copy is read aloud once in Live. The page adds it to the
+  conversation as "คัดลอกใหม่ … · อ่านให้ฟัง" and speaks it with the usual quiet check.
+- Works only while the app is on screen (Android blocks background clipboard reads). Not tested on a real phone yet.

@@ -186,6 +186,15 @@
     clearTimeout(micOff);
     micOff = setTimeout(() => sw.classList.remove("hearing"), 700);
   };
+  // A copy made while Live is on (and the app is on screen) is read once, automatically.
+  let lastCopied = "";
+  handlers.liveCopied = t => {
+    const text = String(t || "").trim();
+    if (!text || text === lastCopied || !liveOn()) return;
+    lastCopied = text;
+    addConvo("note", `คัดลอกใหม่ ${text.length.toLocaleString("th-TH")} ตัวอักษร · อ่านให้ฟัง`);
+    if (A && A.liveSay) A.liveSay(text);
+  };
   handlers.livePartial = t => { $("livePartial").textContent = t || ""; };
   handlers.liveHeard = t => {
     $("livePartial").textContent = "";
