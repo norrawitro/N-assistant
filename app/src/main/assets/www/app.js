@@ -204,6 +204,7 @@
   // ---------- Wikipedia for Live: a found article answers at once; otherwise the AI is asked ----------
   let wikiWait = null; // { id, q, timer }
   function startWiki(q) {
+    setLight("bot-work");
     const query = (window.NKb ? NKb.cleanQuery(q) : "") || q;
     const id = "w" + uid();
     if (wikiWait) clearTimeout(wikiWait.timer);
@@ -807,7 +808,24 @@
   let liveQueue = [];      // things said while the AI was busy; sent to the AI after its current answer
   let aiIntroDone = false; // the long "while you wait" hint is spoken once per app start
   /** Decides at once what to do with what was heard: the bot answers, or the AI is asked while the bot keeps listening. */
+  // ---------- status light: is the bot or the AI thinking, working or answering ----------
+  const LIGHT = {
+    "bot-think": ["บอทกำลังคิด", "bot think"], "bot-work": ["บอทกำลังทำงาน", "bot work"], "bot-answer": ["บอทกำลังตอบ", "bot answer"],
+    "ai-think": ["AI กำลังคิด", "ai think"], "ai-work": ["AI กำลังทำงาน", "ai work"], "ai-answer": ["AI กำลังตอบ", "ai answer"],
+  };
+  let lightTimer = null;
+  /** state: one of the LIGHT keys, or null for "ว่าง". hold: milliseconds before it goes back to ว่าง (0 = stays). */
+  function setLight(state, hold = 0) {
+    const el = $("statusLight"); if (!el) return;
+    clearTimeout(lightTimer);
+    if (!state) { el.className = "status-light idle"; el.textContent = "ว่าง"; return; }
+    el.className = "status-light " + LIGHT[state][1];
+    el.textContent = LIGHT[state][0];
+    if (hold) lightTimer = setTimeout(() => setLight(null), hold);
+  }
+
   function handleHeard(t) {
+    setLight("bot-think", 600);
     const r = window.NBot ? NBot.parse(t, { now: new Date(), pending: botPending, aiBusy: !!liveJob }) : null;
     botPending = null;
     if (r) { applyBot(r); return; }
@@ -966,6 +984,7 @@
   const liveOn = () => $("liveSwitch").getAttribute("aria-checked") === "true";
   /** Says something to the person and writes it in the log. Live listens again afterwards. */
   function liveReply(text, kind = "app") {
+    if (kind === "bot") setLight(liveJob ? "ai-think" : "bot-answer", liveJob ? 0 : 2500); // while the AI works, it stays "คิด"
     if (kind === "bot" && botPrefix) { text = botPrefix + text; botPrefix = ""; }
     addConvo(kind, text);
     if (liveOn() && A && A.liveSay) A.liveSay(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ")); // web addresses are not read aloud
@@ -1011,6 +1030,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
   }
   /** Sends what was said to the AI. Returns false (after saying why) when the AI cannot be used. */
   function askLiveAI(text) {
+    setLight("ai-think");
     stopThinking();
     let job;
     try { job = buildJob("live", "live", livePrompt(text), { schema: liveSchema(), effort: "low", userText: text }); }
@@ -1052,6 +1072,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     // over 5 minutes): still log it, saying which question it answers.
     if (late && askedQ) addConvo("note", `คำตอบที่มาช้าของ "${askedQ.length > 60 ? askedQ.slice(0, 60) + "…" : askedQ}"`);
     if (!res.ok) {
+      setLight(null);
       if (!late) liveQueue = [];
       liveReply(`ติดต่อ AI ไม่ได้ ${res.error || ""}`.trim(), "note");
       return;
@@ -1076,6 +1097,7 @@ ${history || "(เริ่มบทสนทนาใหม่)"}
     }
     if (!reply) reply = made.length ? "ตั้งการเตือนให้แล้ว" : "ขอโทษ ไม่ได้คำตอบจาก AI ลองพูดใหม่อีกครั้ง";
     liveReply(reply);
+    setLight("ai-answer", 3000);
     // Remember plain answers (no reminders set, no page opened) for the next time the same thing is asked.
     if (res.ok && askedQ && !adds.length && !open) remember(askedQ, reply);
     if (made.length) addConvo("note", "ตั้งการเตือนแล้ว: " + made.join(", "));
