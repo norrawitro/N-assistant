@@ -32,6 +32,8 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
          * while listening.
          */
         void level(float loud, float hz, float floorDb, float db);
+        /** Reading text aloud in Live: state playing (index = sentence), done or stopped. */
+        void reading(int index, int total, String state);
     }
 
     private static final Locale THAI = new Locale("th", "TH");
@@ -189,7 +191,13 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
         ttsReady = false;
         tts = new TextToSpeech(ctx, this);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) {}
+            @Override public void onStart(String id) {
+                if (!reading || id == null || !id.startsWith("r")) return;
+                try {
+                    int i = Integer.parseInt(id.substring(1));
+                    main.post(() -> ev.reading(i, readTotal, "playing"));
+                } catch (NumberFormatException ignored) {}
+            }
             @Override public void onDone(String id) { main.post(LiveVoice.this::afterSpeaking); }
             @Override public void onError(String id) { main.post(LiveVoice.this::afterSpeaking); }
         });
@@ -262,7 +270,40 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
 
     private void afterSpeaking() {
         if (speaking > 0) speaking--;
+        if (reading && speaking == 0) { reading = false; ev.reading(-1, readTotal, "done"); }
         relisten(250);
+    }
+
+    // ---------- reading text aloud inside Live (Live stays on; the microphone stays off until the reading ends) ----------
+    private boolean reading;
+    private int readTotal;
+    private float readSpeed = 2f;
+
+    void readAll(java.util.List<String> sentences, int from, float speed) {
+        if (!on || !ttsReady || sentences == null || sentences.isEmpty()) return;
+        main.removeCallbacks(listenTask);
+        cancelRec();
+        readSpeed = speed;
+        readTotal = sentences.size();
+        reading = true;
+        try { tts.setSpeechRate(readSpeed); } catch (Exception ignored) {}
+        int start = Math.max(0, Math.min(from, readTotal - 1));
+        for (int i = start; i < readTotal; i++) {
+            String s = sentences.get(i).trim();
+            if (s.isEmpty()) s = " ";
+            int r = tts.speak(s, i == start ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD, null, "r" + i);
+            if (r == TextToSpeech.SUCCESS) speaking++;
+        }
+        ev.reading(start, readTotal, "playing");
+    }
+
+    void stopReading() {
+        if (!reading) return;
+        try { tts.stop(); } catch (Exception ignored) {}
+        speaking = 0;
+        reading = false;
+        ev.reading(-1, readTotal, "stopped");
+        relisten(300);
     }
 
     private void fail(String message) {

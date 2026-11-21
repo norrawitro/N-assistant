@@ -315,6 +315,10 @@ public class MainActivity extends Activity {
                 @Override public void heard(String text) { emit("liveHeard", JSONObject.quote(text)); }
                 @Override public void spoke(String text) { emit("liveSpoke", JSONObject.quote(text)); }
                 @Override public void partial(String text) { emit("livePartial", JSONObject.quote(text)); }
+                @Override public void reading(int index, int total, String state) {
+                    emit("read", "{\"state\":" + JSONObject.quote(state) + ",\"index\":" + index + ",\"total\":" + total + ",\"message\":\"\"}");
+                }
+
                 @Override public void level(float loud, float hz, float floorDb, float db) {
                     emit("liveLevel", String.format(java.util.Locale.US,
                             "{\"loud\":%.2f,\"hz\":%.0f,\"floor\":%.1f,\"db\":%.1f}", loud, hz, floorDb, db));
@@ -927,6 +931,22 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "";
             }
+        }
+
+        /** Reads the sentences aloud in Live itself, from sentence "from", at the chosen speed. */
+        @JavascriptInterface
+        public void liveReadStart(String sentencesJson, int from, double speed) {
+            java.util.List<String> list = new java.util.ArrayList<>();
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray(sentencesJson);
+                for (int i = 0; i < arr.length(); i++) list.add(arr.optString(i, ""));
+            } catch (Exception ignored) {}
+            main.post(() -> { if (live != null) live.readAll(list, from, (float) speed); });
+        }
+
+        @JavascriptInterface
+        public void liveReadStop() {
+            main.post(() -> { if (live != null) live.stopReading(); });
         }
 
         @JavascriptInterface
