@@ -66,8 +66,8 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     private boolean listening;                              // the recognizer is running now
     private final Runnable quietDone = this::onQuiet;
 
-    private void restartQuiet() { main.removeCallbacks(quietDone); quietArmed = true; main.postDelayed(quietDone, QUIET_MS); }
-    private void cancelQuiet() { main.removeCallbacks(quietDone); quietArmed = false; }
+    private void restartQuiet() { restartQuietIn(QUIET_MS); }
+    private void restartQuietIn(long ms) { main.removeCallbacks(quietDone); quietArmed = true; main.postDelayed(quietDone, Math.max(50, ms)); }
     /** Recognizer errors while words or an answer are waiting must not cancel the wait, but must not extend it either. */
     private void armIfIdle() { if (!quietArmed && (held.length() > 0 || pendingSay != null)) restartQuiet(); }
     private void cancelRec() {
@@ -79,13 +79,17 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
      * The room's own noise (the "พื้นเสียง"): an average of the quiet moments, in the recognizer's dB. A sound counts
      * when it is SOUND_MARGIN_DB above that average. Starts from the first reading and keeps adjusting slowly.
      */
-    private static final float SOUND_MARGIN_DB = 3f;
+    private static final float SOUND_MARGIN_DB = 4f;
     private float noiseFloor = Float.NaN;
     private long lastSoundAt;
 
     private void onQuiet() {
         quietArmed = false;
         if (!on) return;
+        // Silence means the room's sound level has stayed at the room's own noise for QUIET_MS. The recognizer's
+        // events are not used for this: room noise makes it report text, which would keep the phrase open forever.
+        long since = System.currentTimeMillis() - lastSoundAt;
+        if (since < QUIET_MS) { restartQuietIn(QUIET_MS - since); return; }
         if (held.length() > 0) {
             String text = held.toString();
             held.setLength(0);
@@ -100,12 +104,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
             if (pendingSay != null) { restartQuiet(); listen(); } // an earlier answer still waits for silence
             return;
         }
-        if (pendingSay != null) {
-            // Check the surroundings: if there was sound in the last QUIET_MS, wait for it to go still first.
-            long since = System.currentTimeMillis() - lastSoundAt;
-            if (since < QUIET_MS) { main.removeCallbacks(quietDone); quietArmed = true; main.postDelayed(quietDone, QUIET_MS - since); return; }
-            speakPending();
-        }
+        if (pendingSay != null) speakPending();
     }
 
     private void speakPending() {
@@ -269,7 +268,6 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     public void onPartialResults(Bundle partial) {
         ArrayList<String> list = partial.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if (list != null && !list.isEmpty() && !list.get(0).trim().isEmpty()) {
-            cancelQuiet(); // still talking
             ev.partial((held.length() > 0 ? held + " " : "") + list.get(0).trim());
         }
     }
@@ -305,7 +303,7 @@ final class LiveVoice implements RecognitionListener, TextToSpeech.OnInitListene
     }
 
     @Override public void onReadyForSpeech(Bundle params) {}
-    @Override public void onBeginningOfSpeech() { cancelQuiet(); }
+    @Override public void onBeginningOfSpeech() {}
     // ---------- microphone light ----------
     private long lastLevelAt;
     private float hz;

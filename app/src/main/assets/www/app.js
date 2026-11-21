@@ -371,6 +371,20 @@
     if (!t || !t.trim()) { setReadUi(readPlaying, "คลิปบอร์ดว่าง คัดลอกข้อความมาก่อน"); return; }
     $("readText").value = t; startReading(0);
   });
+  // ---------- automatic: read what is copied, once per copy (runs in the background) ----------
+  function setAutoUi(on) {
+    const b = $("readAuto");
+    b.setAttribute("aria-pressed", String(on)); b.classList.toggle("primary", on);
+    b.textContent = on ? "อ่านที่คัดลอกอัตโนมัติ: เปิด" : "อ่านที่คัดลอกอัตโนมัติ: ปิด";
+  }
+  $("readAuto").addEventListener("click", () => {
+    const on = $("readAuto").getAttribute("aria-pressed") !== "true";
+    setAutoUi(on);
+    if (A && A.readAutoSet) A.readAutoSet(on, readRate);
+    $("readStatus").textContent = on ? "เปิดแล้ว: เมื่อคัดลอกข้อความ จะอ่านให้หนึ่งรอบ" : "ปิดการอ่านที่คัดลอกอัตโนมัติแล้ว";
+  });
+  // The phone keeps the switch, so it is shown as it was left.
+  setAutoUi(!!(A && A.readAutoState && A.readAutoState() === "true"));
   $("readFix").addEventListener("click", () => {
     if (!A) return;
     if ($("readFix").dataset.kind === "novoice") { if (A.installThaiVoice) A.installThaiVoice(); }
@@ -392,6 +406,7 @@
   $("readText").addEventListener("input", () => { if (!readPlaying) { readSentences = []; readAt = -1; renderReader(); } saveRead(); });
   document.querySelectorAll("#readBar .speeds button").forEach(b => b.addEventListener("click", () => {
     readRate = +b.dataset.rate; saveRead();
+    if (A && A.readAutoSet && $("readAuto").getAttribute("aria-pressed") === "true") A.readAutoSet(true, readRate); // the next copy uses the new speed
     document.querySelectorAll("#readBar .speeds button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
     if (readPlaying) startReading(Math.max(0, readAt)); // restart the current sentence at the new speed
     else $("readStatus").textContent = `ความเร็ว x${readRate}`;

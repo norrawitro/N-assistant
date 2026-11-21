@@ -737,6 +737,16 @@ public class MainActivity extends Activity {
         }
 
         /** {playing, index, total} so the page can show where reading is after coming back. */
+        /** "true" when the automatic read-aloud switch is on (kept on the phone). */
+        @JavascriptInterface
+        public String readAutoState() { return String.valueOf(ReadAloudService.autoOn(MainActivity.this)); }
+
+        /** The page's switch: on starts listening for copies, off stops it. */
+        @JavascriptInterface
+        public void readAutoSet(boolean on, double rate) {
+            main.post(() -> ReadAloudService.setAuto(MainActivity.this, on, (float) rate));
+        }
+
         @JavascriptInterface
         public String readStatus() {
             return "{\"playing\":" + ReadAloudService.playing + ",\"index\":" + ReadAloudService.index + ",\"total\":" + ReadAloudService.total + "}";
