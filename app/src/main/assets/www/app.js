@@ -597,6 +597,18 @@
   /** Answers that change with time, or commands, are not remembered. */
   const NO_MEMORY = /วันนี้|ตอนนี้|พรุ่งนี้|เมื่อวาน|มะรืน|เดี๋ยวนี้|ล่าสุด|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|ปีนี้|กี่โมง|เวลา|อากาศ|ฝน|ราคา|หุ้น|ทอง|ข่าว|ผลบอล|เตือน|ตั้ง|เปิด|ปิด|จด|บันทึก|ลบ|ข้อมูลเพิ่มเติมจากผู้ใช้/;
   /** The remembered question that matches `q` both ways (so a short memory does not answer a longer question). */
+  /** Every remembered answer that matches the question (both ways), best first, at most 5. */
+  function memFindAll(q) {
+    const list = memList(); if (!list.length) return [];
+    const out = [];
+    for (const r of NKb.search(list.map(m => ({ title: "", text: m.q, m })), q, 10)) {
+      if (r.cover < MEM_MATCH) break;
+      const back = NKb.search([{ title: "", text: q }], r.chunk.m.q, 1)[0];
+      if (back && back.cover >= MEM_MATCH) out.push(r.chunk.m);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }
   function memFind(q) {
     const list = memList(); if (!list.length) return null;
     const top = NKb.search(list.map(m => ({ title: "", text: m.q, m })), q, 3);
@@ -684,15 +696,33 @@
       meta.textContent = `${new Date(m.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} · ใช้ซ้ำ ${m.uses || 0} ครั้ง`;
       const q = document.createElement("b"); q.textContent = m.q;
       t.append(meta, q, document.createElement("br"), document.createTextNode(m.a));
+      const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "✎"; edit.dataset.id = m.id; edit.dataset.act = "edit"; edit.setAttribute("aria-label", "แก้ไขคำตอบนี้");
       const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.dataset.id = m.id; del.setAttribute("aria-label", "ลบคำตอบนี้");
-      li.append(t, del); ol.appendChild(li);
+      li.append(t, edit, del); ol.appendChild(li);
     }
   }
   $("memList").addEventListener("click", e => {
     const b = e.target.closest("button[data-id]"); if (!b) return;
     const m = memList().find(x => x.id === b.dataset.id);
+    if (m && b.dataset.act === "edit") { openMemEditor(b.closest("li"), m); return; }
     if (m && confirm(`ลบคำตอบที่จำไว้ของคำถามนี้?\n${m.q}`)) saveMem(memList().filter(x => x.id !== m.id));
   });
+  /** Inline editor for a wrong saved answer: change the question or the answer, or empty the answer to remove it. */
+  function openMemEditor(li, m) {
+    li.textContent = "";
+    const qIn = document.createElement("input"); qIn.type = "text"; qIn.value = m.q; qIn.setAttribute("aria-label", "คำถาม");
+    const aIn = document.createElement("textarea"); aIn.rows = 3; aIn.value = m.a; aIn.setAttribute("aria-label", "คำตอบ");
+    const save = document.createElement("button"); save.type = "button"; save.className = "btn primary"; save.textContent = "บันทึก";
+    const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "btn"; cancel.textContent = "ยกเลิก";
+    const hint = document.createElement("span"); hint.className = "small muted"; hint.textContent = "ลบคำตอบนี้ให้ปล่อยช่องคำตอบว่างแล้วบันทึก";
+    save.addEventListener("click", () => {
+      if (!aIn.value.trim()) { saveMem(memList().filter(x => x.id !== m.id)); return; }
+      saveMem(memList().map(x => x.id === m.id ? { ...x, q: qIn.value.trim() || x.q, a: aIn.value.trim(), at: Date.now() } : x));
+    });
+    cancel.addEventListener("click", () => renderMem());
+    li.append(qIn, aIn, hint, save, cancel);
+    aIn.focus();
+  }
   $("memClear").addEventListener("click", () => { if (memList().length && confirm("ล้างคำตอบที่จำไว้ทั้งหมด?")) saveMem([]); });
   let lastAsked = ""; // the last question that went to the AI or was answered from memory, for "ถาม AI ใหม่"
 
@@ -839,15 +869,20 @@
     botPending = null;
     if (r) { applyBot(r); return; }
     const kbTop = kbFiles().length ? NKb.search(kbAll(), t, 1)[0] : null;
-    if (kbTop && kbTop.cover >= KB_DIRECT) {
-      liveReply(`จากคลังความรู้ เรื่อง${kbTop.chunk.title} ${NKb.bestLines(kbTop.chunk.text, t)}`, "bot");
+    const kbHits = kbFiles().length ? NKb.search(kbAll(), t, 5).filter(r => r.cover >= KB_DIRECT) : [];
+    if (kbHits.length) {
+      const parts = kbHits.map(h => `เรื่อง${h.chunk.title} ${NKb.bestLines(h.chunk.text, t)}`);
+      liveReply(`จากคลังความรู้ ${parts.join(" อีกเรื่องหนึ่ง ")}`, "bot");
       return;
     }
-    const mem = NO_MEMORY.test(t) ? null : memFind(t);
-    if (mem) {
+    const mems = NO_MEMORY.test(t) ? [] : memFindAll(t);
+    if (mems.length) {
       lastAsked = t;
-      saveMem(memList().map(m => m.id === mem.id ? { ...m, uses: (m.uses || 0) + 1 } : m));
-      liveReply(`เคยตอบไว้เมื่อ ${new Date(mem.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} ว่า ${mem.a}`, "bot");
+      const ids = new Set(mems.map(m => m.id));
+      saveMem(memList().map(m => ids.has(m.id) ? { ...m, uses: (m.uses || 0) + 1 } : m));
+      // Every matching saved answer is read out, so nothing is left out.
+      const parts = mems.map(m => `เมื่อ ${new Date(m.at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })} ตอบไว้ว่า ${m.a}`);
+      liveReply(mems.length === 1 ? `เคยตอบไว้ ${parts[0]}` : `เคยตอบไว้ ${mems.length} ครั้ง ${parts.join(" อีกครั้งหนึ่ง ")}`, "bot");
       return;
     }
     const basic = faqFind(t);
