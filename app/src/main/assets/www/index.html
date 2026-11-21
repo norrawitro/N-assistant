@@ -597,6 +597,17 @@ input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--b
       </div>
       <div class="sec" id="otherBox" hidden>
         <div class="field">
+          <label for="sProfile">ผู้ให้บริการที่บันทึกไว้</label>
+          <select id="sProfile"></select>
+          <div class="row">
+            <button class="btn" id="profileUse" type="button">ใช้ตัวนี้</button>
+            <button class="btn" id="profileDel" type="button">ลบตัวนี้</button>
+          </div>
+          <input type="text" id="profileName" placeholder="ชื่อที่จะบันทึก เช่น Groq ของฉัน" autocomplete="off">
+          <div class="row"><button class="btn" id="profileAdd" type="button">บันทึกผู้ให้บริการนี้</button></div>
+          <span class="hint">บันทึก URL, API key และโมเดลไว้ในเครื่องนี้ ไม่ต้องกรอกใหม่ทุกครั้งที่เปลี่ยนโมเดล ไม่ถูกรวมในไฟล์ส่งออก</span>
+        </div>
+        <div class="field">
           <label for="sOtherPreset">ผู้ให้บริการ</label>
           <select id="sOtherPreset">
             <option value="https://api.openai.com/v1">OpenAI</option>

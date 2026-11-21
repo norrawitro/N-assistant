@@ -1665,6 +1665,45 @@ ${contextText(date)}
     $("sStatus").textContent = "สร้างกุญแจแล้ว จดไว้ให้ AI ฝั่งที่ตอบ แล้วกด \"บันทึกการตั้งค่า\"";
   });
   $("mdShowKey").addEventListener("click", () => { const show = $("sMdKey").type === "password"; $("sMdKey").type = show ? "text" : "password"; $("mdShowKey").textContent = show ? "ซ่อนกุญแจ" : "แสดงกุญแจ"; });
+  // ---------- saved AI providers: URL, key and model kept on this phone, so changing the model needs no re-typing ----------
+  const LS_PROFILES = "nassistant.aiProfiles"; // not in the data file: it holds keys
+  function profiles() { try { const a = JSON.parse(localStorage.getItem(LS_PROFILES) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+  function saveProfiles(list) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(list)); } catch {} renderProfiles(); }
+  function renderProfiles() {
+    const sel = $("sProfile"), list = profiles(), keep = sel.value;
+    sel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = list.length ? "เลือกผู้ให้บริการที่บันทึกไว้…" : "ยังไม่มีผู้ให้บริการที่บันทึกไว้";
+    sel.appendChild(none);
+    list.forEach(p => { const o = document.createElement("option"); o.value = p.id; o.textContent = `${p.name} · ${p.model || "ยังไม่ระบุโมเดล"}`; sel.appendChild(o); });
+    if (list.some(p => p.id === keep)) sel.value = keep;
+  }
+  $("profileUse").addEventListener("click", () => {
+    const p = profiles().find(x => x.id === $("sProfile").value);
+    if (!p) { $("sStatus").textContent = "เลือกผู้ให้บริการในรายการก่อน"; return; }
+    const url = String(p.url || "").replace(/\/+$/, "");
+    $("sOtherUrl").value = url; $("sOtherKey").value = p.key || ""; $("sOtherModel").value = p.model || "";
+    $("sOtherPreset").value = [...$("sOtherPreset").options].some(o => o.value === url) ? url : "";
+    $("sProvider").value = "openai"; showProviderBox();
+    $("sStatus").textContent = `เลือก ${p.name} แล้ว กดบันทึกการตั้งค่าเพื่อใช้ตัวนี้`;
+  });
+  $("profileAdd").addEventListener("click", () => {
+    const url = $("sOtherUrl").value.trim().replace(/\/+$/, ""), key = $("sOtherKey").value.trim(), model = $("sOtherModel").value.trim();
+    if (!/^https:\/\//.test(url)) { $("sStatus").textContent = "ใส่ที่อยู่ API ที่ขึ้นต้นด้วย https:// ก่อนบันทึก"; return; }
+    let name = $("profileName").value.trim();
+    if (!name) { try { name = new URL(url).host; } catch { name = "ผู้ให้บริการ"; } }
+    const list = profiles(), same = list.find(p => p.url === url && p.model === model);
+    const item = { id: same ? same.id : uid(), name, url, key, model };
+    saveProfiles(same ? list.map(p => p.id === same.id ? item : p) : [...list, item]);
+    $("profileName").value = ""; $("sProfile").value = item.id;
+    $("sStatus").textContent = `บันทึก ${name} แล้ว`;
+  });
+  $("profileDel").addEventListener("click", () => {
+    const id = $("sProfile").value;
+    if (!id) { $("sStatus").textContent = "เลือกผู้ให้บริการที่จะลบก่อน"; return; }
+    saveProfiles(profiles().filter(p => p.id !== id));
+    $("sStatus").textContent = "ลบแล้ว";
+  });
   $("sOtherPreset").addEventListener("change", () => { const v = $("sOtherPreset").value; if (v) $("sOtherUrl").value = v; $("sOtherUrl").focus(); });
 
   // ---------- Termux: let the app start "ollama serve" by itself ----------
@@ -1809,7 +1848,7 @@ ${contextText(date)}
     ensureModelOption(s.localModel); set("sLocalModel", s.localModel); showProviderBox();
     $("sWakeOn").checked = !!s.wakeOn; $("sEveOn").checked = !!s.eveningOn;
     set("sKey", apiKey());
-    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey());
+    set("sOtherUrl", s.otherUrl); set("sOtherModel", s.otherModel); set("sOtherKey", otherKey()); renderProfiles();
     set("sMdRepo", s.mdRepo); set("sMdPath", s.mdPath || "chat/n-assistant.md"); set("sMdToken", lsStr(LS_MD_TOKEN)); set("sMdKey", lsStr(LS_MD_KEY));
     { const preset = [...$("sOtherPreset").options].find(o => o.value && o.value === String(s.otherUrl || "").replace(/\/+$/, "")); $("sOtherPreset").value = preset ? preset.value : (s.otherUrl ? "" : $("sOtherPreset").options[0].value); }
     set("mTasks", t.morning.tasks); set("mWorry", t.morning.worry); setScale($("mEnergy"), t.morning.energy);
