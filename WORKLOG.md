@@ -845,3 +845,13 @@ Nothing below is built. Pick one at a time when there is quota again.
 - Now: Live reads every saved day (newest first), says how many notes there are in all, and then the latest twelve.
   The AI prompt also gets the notes from every day (newest first, up to 60), so it can answer from them.
 - Tested in a browser with notes on three days: all six notes are listed. Not tested on a real phone yet.
+
+## 2026-11-21: Live finished its sentence despite room noise
+
+- Owner's report: with background noise the app never saw 2 s of silence, so it kept recording and never sent.
+- Cause: silence was decided by the recognizer's events, and room noise makes the recognizer report text and
+  "beginning of speech", which kept restarting the wait.
+- Now: silence is decided only by the room's sound level (above the room's average noise + SOUND_MARGIN_DB = 4 dB
+  counts as sound). The recognizer's events no longer restart the wait. The average follows the room, so steady
+  noise is ignored. The Live page shows the average and the current level (พื้นเสียง / ตอนนี้) to tune by.
+- Not tested on a real phone yet.
