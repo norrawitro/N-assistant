@@ -93,7 +93,7 @@
     if (name === "live") renderConvo();
     if (name === "live") { requestAnimationFrame(sizeReadBox); syncRead(); }
     document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-    TABS.forEach(t => $("p-" + t).hidden = t !== name);
+    TABS.forEach(t => { const el = $("p-" + t); if (el) el.hidden = t !== name; }); // "read" has no page of its own now
     if (name === "evening") renderChecks();
     if (name === "remind") { renderReminders(); readWhere(); renderPlaceRules(); }
     if (name === "chat") { renderChat(); setTimeout(() => $("chatLog").lastElementChild?.scrollIntoView({ block: "end" }), 50); }
